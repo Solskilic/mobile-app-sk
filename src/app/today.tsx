@@ -49,7 +49,11 @@ export default function TodayScreen() {
           {forDate === today ? 'Today' : 'Tomorrow'}
         </T>
         <T tone="textSecondary" size={17}>
-          {tasks.filter((t) => t.status === 'open').length} steps ·{' '}
+          {tasks.filter((t) => t.status === 'open').length}{' '}
+          {tasks.filter((t) => t.status === 'open').length === 1
+            ? 'step'
+            : 'steps'}{' '}
+          ·{' '}
           {tasks
             .filter((t) => t.status === 'open')
             .reduce((sum, t) => sum + t.minutes, 0)}{' '}

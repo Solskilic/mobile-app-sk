@@ -88,7 +88,7 @@ export default function GrandListScreen() {
     }
   }
   return (
-    <Screen>
+    <Screen key={step}>
       <MotionGroup key={step}>
         {step > 0 ? <BackLink onPress={() => setStep(step - 1)} /> : null}
         <StepStrip total={isCareer ? 4 : 3} current={step} />
