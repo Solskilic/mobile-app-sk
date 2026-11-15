@@ -125,7 +125,7 @@ async function generateTracked(ctx: ActionCtx, deviceId: string, forDate: string
 }
 
 async function generate(ctx: ActionCtx, deviceId: string, forDate: string, today: string) {
-  const goals = await ctx.runQuery(internal.goals.liveForAi, { deviceId });
+  const goals = await ctx.runQuery(internal.goals.liveForAi, { deviceId, asOfDate: today });
   if (goals.length === 0) return;
   const route = await ctx.runMutation(internal.routeAdherence.prepare, { deviceId, today, forDate });
   const budget = await ctx.runQuery(internal.route.taskBudget, { deviceId, today, forDate });
@@ -137,6 +137,8 @@ async function generate(ctx: ActionCtx, deviceId: string, forDate: string, today
       const rung = g.rungs[g.currentRung];
       const next = g.rungs[g.currentRung + 1];
       return `Goal #${i}: ${g.smart?.statement ?? g.title}
+  starting point and constraints: ${g.text.slice(0, 2000)}
+  manual run evidence, self-reported, NOT a completed task or milestone: ${JSON.stringify(g.runEvidence)}. Use this as a starting baseline for a small next action; never infer race completion, prescribe increasing training load, or offer medical advice.
   current rung: ${rung?.title ?? "-"} (${rung?.milestone ?? ""})${rung?.kind === "explore" ? " [exploration]" : ""}
   next rung: ${next?.title ?? "finish line"}
   max minutes per task: ${Math.min(g.minutesCap ?? 30, route.summary.minutesCap, perTask)}

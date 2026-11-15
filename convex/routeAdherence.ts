@@ -2,6 +2,7 @@ import { v } from "convex/values";
 import type { Doc } from "./_generated/dataModel";
 import { internalMutation, internalQuery, query, type QueryCtx } from "./_generated/server";
 import { adherence, addDays, DAY_NAMES, weekdayOf, type Outcome } from "./routeEngine";
+import { readRunEvidence } from './runLog';
 
 type TaskOutcome = Pick<Doc<"tasks">, "forDate" | "status" | "minutes" | "completedAt">;
 type Ramp = Pick<Doc<"ramps">, "startDate" | "endDate" | "reason">;
@@ -14,6 +15,7 @@ const summaryValidator = v.object({
   explanation: v.string(),
   ramp: v.union(rampValidator, v.null()),
   rampDay: v.union(v.number(), v.null()),
+  activityNote: v.optional(v.string()),
 });
 const modelValidator = v.object({
   state: v.union(v.literal("new"), v.literal("onTrack"), v.literal("drifting"), v.literal("lapsed")),
@@ -39,7 +41,7 @@ function validateDate(key: string) {
 
 const daysBetween = (a: string, b: string) => Math.round((Date.parse(`${b}T00:00:00Z`) - Date.parse(`${a}T00:00:00Z`)) / 86_400_000);
 
-export function buildAdherenceContext(tasks: TaskOutcome[], latestRamp: Ramp | null, today: string, forDate: string) {
+export function buildAdherenceContext(tasks: TaskOutcome[], latestRamp: Ramp | null, today: string, forDate: string, latestManualRun?: string) {
   validateDate(today);
   validateDate(forDate);
   const outcomes: Outcome[] = tasks.filter((t) => t.forDate < today).map((t) => ({
@@ -50,10 +52,11 @@ export function buildAdherenceContext(tasks: TaskOutcome[], latestRamp: Ramp | n
   const model = adherence(outcomes, today);
   const dates = outcomes.map((o) => o.forDate).sort();
   const lastDone = outcomes.filter((o) => o.status === "done").map((o) => o.forDate).sort().pop();
-  const idleSince = lastDone ?? dates[0];
+  const idleSince = [lastDone ?? dates[0], latestManualRun].filter((s): s is string => !!s && s <= today).sort().pop();
   model.idleDays = idleSince ? Math.max(0, daysBetween(idleSince, today) - 1) : 0;
   if (model.idleDays >= 4 || model.missedDaysInRow >= 3) model.state = "lapsed";
   else if (model.missedDaysInRow >= 2) model.state = "drifting";
+  else if (latestManualRun && model.state === 'lapsed') model.state = model.resolved < 3 ? 'new' : 'onTrack';
 
   const needsReentry = model.missedDaysInRow >= 2 || model.idleDays >= 4;
   const newMiss = outcomes.some((o) => o.status === "missed" && (!latestRamp || o.forDate > latestRamp.endDate));
@@ -98,7 +101,11 @@ export async function readAdherenceContext(ctx: QueryCtx, input: Dates) {
       .withIndex("by_device_and_endDate", (q) => q.eq("deviceId", input.deviceId))
       .order("desc").first(),
   ]);
-  return buildAdherenceContext(tasks, latestRamp, input.today, input.forDate);
+  const goals = await ctx.db.query('goals').withIndex('by_device_and_status', q => q.eq('deviceId', input.deviceId).eq('status', 'active')).take(3);
+  const evidence = await Promise.all(goals.map(g => readRunEvidence(ctx, { goalId: g._id, asOfDate: input.today })));
+  const latestRun = evidence.map(e => e.latestRunDate).filter((s): s is string => !!s).sort().pop();
+  const context = buildAdherenceContext(tasks, latestRamp, input.today, input.forDate, latestRun);
+  return { ...context, summary: { ...context.summary, ...(latestRun ? { activityNote: `You logged a run on ${latestRun}. That counts as recent activity for idle-based re-entry, not a completed step or race.` } : {}) } };
 }
 
 export const context = query({

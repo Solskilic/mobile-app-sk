@@ -12,6 +12,7 @@ export function RouteStatus({ today, forDate }: { today: string; forDate: string
   return <Card soft>
     <T weight="600">{context.ramp ? "A gentler way back" : "At your pace"}</T>
     <T size={14}>{context.explanation}</T>
+    {context.activityNote ? <T size={13} tone="textSecondary">{context.activityNote}</T> : null}
     <Pressable accessibilityRole="button" onPress={() => setWhy(!why)}>
       <T size={13} tone="accent">Why these steps?</T>
     </Pressable>

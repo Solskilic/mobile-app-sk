@@ -1,6 +1,7 @@
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 import { researchFields } from "./researchTypes";
+import { runLogTables } from './runLogTypes';
 
 export const goalStatus = v.union(
   v.literal("clarifying"),
@@ -40,6 +41,7 @@ export const horizonValidator = v.object({
 });
 
 export default defineSchema({
+  ...runLogTables,
   progressPhotos: defineTable({ goalId: v.id('goals'), storageId: v.id('_storage'), caption: v.string(), addedAt: v.number() }).index('by_goal_and_addedAt', ['goalId', 'addedAt']),
   goals: defineTable({
     deviceId: v.string(),

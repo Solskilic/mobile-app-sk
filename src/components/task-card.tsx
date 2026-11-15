@@ -54,8 +54,8 @@ export function TaskCard({ task, today, past }: { task: TaskView; today: string;
           </T>
           <T size={22} weight="700" tone="accent">
             {task.minutes} min{task.shrunk ? ' · shrunk' : ''}
-            {missed ? ' · moved on, no harm done' : ''}
           </T>
+          {missed ? <T size={13} tone="textSecondary">Moved on. No catching up.</T> : null}
         </View>
       </View>
       <View style={styles.tag}>

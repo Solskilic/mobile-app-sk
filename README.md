@@ -1,6 +1,12 @@
-# mobile-app-sk
+# Route
 
-Expo (SDK 58) app with Expo Router and TypeScript, backed by [Convex](https://convex.dev).
+Warm, big-picture Goals demo built with Expo SDK 58, Expo Router, Convex and OpenAI.
+
+Start with one goal or a list, choose dedication and weekly hours separately, and give each goal its own horizon. A deterministic scheduler fits an AI-proposed dependency graph into the week; embedding candidates help discover duplicate and shared stops. The home screen is the route, not a backlog.
+
+Demo journeys use the same engine: a provisional career pivot with cited research, a half marathon with self-reported run logs, or learning any instrument. Manual runs inform small-step context and idle-based re-entry but never complete tasks or races. Photos are a passive dated gallery only.
+
+This is a shared single-user demo without authentication. Do not enter sensitive information. Strava, HealthKit, Health Connect and production security are not implemented. AI effort estimates are provisional; career research does not promise employment or a hiring date.
 
 ## Get started
 
@@ -25,7 +31,7 @@ Expo (SDK 58) app with Expo Router and TypeScript, backed by [Convex](https://co
 ## Layout
 
 - `src/app/` — Expo Router routes; `_layout.tsx` wraps the app in `ConvexProvider`.
-- `convex/` — backend functions and schema. `convex/hello.ts` is a sample query rendered on the home screen.
+- `convex/` — route scheduling, adherence, cited research, manual run logs, gallery storage and OpenAI server actions. Keys stay on the backend.
 - `AGENTS.md`, `CLAUDE.md`, `.agents/skills`, `.claude/skills`, `convex/_generated/ai/guidelines.md` — coding-agent guidance from Expo and `npx convex ai-files install`.
 
 ## Checks
@@ -35,4 +41,6 @@ Expo (SDK 58) app with Expo Router and TypeScript, backed by [Convex](https://co
 ```bash
 npx tsc --noEmit
 npx expo lint
+npm test
+npx expo export --platform web
 ```

@@ -30,16 +30,18 @@ export function ProgressGallery({ goalId }: { goalId: Id<'goals'> }) {
   async function save() {
     if (!selected || busy) return;
     setBusy(true); setError('');
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 30000);
     try {
-      const blob = await (await fetch(selected.uri)).blob();
+      const blob = await (await fetch(selected.uri, { signal: controller.signal })).blob();
       if (blob.size > 10 * 1024 * 1024) throw new Error('Choose a photo under 10 MB.');
       const url = await uploadUrl({ goalId });
-      const response = await fetch(url, { method: 'POST', headers: { 'Content-Type': selected.mimeType || blob.type || 'image/jpeg' }, body: blob });
+      const response = await fetch(url, { method: 'POST', headers: { 'Content-Type': selected.mimeType || blob.type || 'image/jpeg' }, body: blob, signal: controller.signal });
       if (!response.ok) throw new Error('The upload didn’t finish. Try again.');
       const { storageId } = await response.json() as { storageId: Id<'_storage'> };
       await add({ goalId, storageId, caption }); setSelected(null); setCaption('');
     } catch (e) { setError(e instanceof Error ? e.message : 'Couldn’t save your photo. Reconnect and try again.'); }
-    finally { setBusy(false); }
+    finally { clearTimeout(timeout); setBusy(false); }
   }
   return <Card>
     <T size={22} weight="600">A little look back.</T><T size={14} tone="textSecondary">Photos for your memories. No judging, analysing, or checking off tasks.</T>

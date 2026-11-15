@@ -11,6 +11,7 @@ import {
 } from "./_generated/server";
 import { resourceValidator, smartValidator, verdictValidator } from "./schema";
 import { climbRouteGoal, routeGoalReady } from "./route";
+import { readRunEvidence } from './runLog';
 
 export const MAX_ACTIVE = 3;
 export const DAY = 24 * 60 * 60 * 1000;
@@ -145,6 +146,8 @@ export const resume = mutation({
 });
 
 async function removeGoal(ctx: MutationCtx, goalId: Id<"goals">) {
+  const runs = await ctx.db.query('runLogs').withIndex('by_goal_and_provenance_and_date', q => q.eq('goalId', goalId)).take(103);
+  for (const run of runs) await ctx.db.delete('runLogs', run._id);
   const photos = await ctx.db.query('progressPhotos').withIndex('by_goal_and_addedAt', q => q.eq('goalId', goalId)).take(100);
   for (const photo of photos) { await ctx.storage.delete(photo.storageId); await ctx.db.delete('progressPhotos', photo._id); }
   const research = await ctx.db.query("research").withIndex("by_goal", (q) => q.eq("goalId", goalId)).take(20);
@@ -286,8 +289,8 @@ export const forAi = internalQuery({
 });
 
 export const liveForAi = internalQuery({
-  args: { deviceId: v.string() },
-  handler: async (ctx, { deviceId }) => {
+  args: { deviceId: v.string(), asOfDate: v.optional(v.string()) },
+  handler: async (ctx, { deviceId, asOfDate }) => {
     const goals = await ctx.db
       .query("goals")
       .withIndex("by_device_and_status", (q) => q.eq("deviceId", deviceId).eq("status", "active"))
@@ -301,7 +304,8 @@ export const liveForAi = internalQuery({
           .withIndex("by_goal_and_status", (q) => q.eq("goalId", g._id).eq("status", "done"))
           .order("desc")
           .take(8);
-        return { ...(await withRungs(ctx, g)), recentDone: recent.map((t) => t.title) };
+        const runEvidence = asOfDate ? await readRunEvidence(ctx, { goalId: g._id, asOfDate }) : null;
+        return { ...(await withRungs(ctx, g)), recentDone: recent.map((t) => t.title), runEvidence };
       }),
     );
   },
