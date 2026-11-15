@@ -90,6 +90,12 @@ export default defineSchema({
     .index("by_device_and_forDate", ["deviceId", "forDate"])
     .index("by_goal_and_status", ["goalId", "status"]),
 
+  planner: defineTable({
+    deviceId: v.string(),
+    running: v.boolean(),
+    error: v.optional(v.string()),
+  }).index("by_device", ["deviceId"]),
+
   checkins: defineTable({
     deviceId: v.string(),
     goalId: v.id("goals"),

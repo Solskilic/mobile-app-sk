@@ -13,7 +13,7 @@ import { resourceValidator, smartValidator, verdictValidator } from "./schema";
 
 export const MAX_ACTIVE = 3;
 export const DAY = 24 * 60 * 60 * 1000;
-const LIVE_STATUSES = ["clarifying", "planning", "active"] as const;
+const LIVE_STATUSES = ["clarifying", "planning", "active", "failed"] as const;
 
 async function liveGoals(ctx: QueryCtx, deviceId: string) {
   const groups = await Promise.all(
@@ -204,6 +204,14 @@ export const climb = mutation({
       return { kind: "goal" as const, identity: rung.identity, next: null };
     }
     await ctx.db.patch("goals", goalId, { currentRung: goal.currentRung + 1, missStreak: 0 });
+    const stale = await ctx.db
+      .query("tasks")
+      .withIndex("by_goal_and_status", (q) => q.eq("goalId", goalId).eq("status", "open"))
+      .take(50);
+    for (const task of stale) await ctx.db.delete("tasks", task._id);
+    for (const forDate of new Set(stale.map((t) => t.forDate))) {
+      await ctx.scheduler.runAfter(0, internal.ai.generateThree, { deviceId: goal.deviceId, forDate });
+    }
     await ctx.db.insert("checkins", {
       deviceId: goal.deviceId,
       goalId,

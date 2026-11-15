@@ -102,13 +102,25 @@ Rewrite the goal as SMART, give an honest realism verdict (do not flatter: if th
         estimateLabel: out.estimateLabel,
         rungs,
       });
-      if (saved) await generate(ctx, goal.deviceId, tomorrow);
+      if (!saved) return null;
     } catch (e) {
       await ctx.runMutation(internal.goals.setFailed, { goalId, error: message(e) });
+      return null;
     }
+    await generateTracked(ctx, goal.deviceId, tomorrow);
     return null;
   },
 });
+
+async function generateTracked(ctx: ActionCtx, deviceId: string, forDate: string) {
+  await ctx.runMutation(internal.tasks.setPlanner, { deviceId, running: true });
+  try {
+    await generate(ctx, deviceId, forDate);
+    await ctx.runMutation(internal.tasks.setPlanner, { deviceId, running: false });
+  } catch (e) {
+    await ctx.runMutation(internal.tasks.setPlanner, { deviceId, running: false, error: message(e) });
+  }
+}
 
 async function generate(ctx: ActionCtx, deviceId: string, forDate: string) {
   const goals = await ctx.runQuery(internal.goals.liveForAi, { deviceId });
@@ -158,7 +170,7 @@ export const generateThree = internalAction({
   args: { deviceId: v.string(), forDate: v.string() },
   returns: v.null(),
   handler: async (ctx, { deviceId, forDate }) => {
-    await generate(ctx, deviceId, forDate);
+    await generateTracked(ctx, deviceId, forDate);
     return null;
   },
 });

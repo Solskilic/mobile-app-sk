@@ -6,12 +6,13 @@ import { Pressable, View } from 'react-native';
 import { Button, Card, Ladder, Screen, T, Thinking } from '@/components/goal-ui';
 import { TaskCard, type TaskView } from '@/components/task-card';
 import { Spacing } from '@/constants/theme';
-import { DEVICE_ID, formatDateKey, formatDay, localDate } from '@/lib/plan';
+import { useToday } from '@/hooks/use-today';
+import { DEVICE_ID, formatDateKey, formatDay, nextDate } from '@/lib/plan';
 import { api } from '../../convex/_generated/api';
 
 export default function TodayScreen() {
-  const today = localDate(0);
-  const tomorrow = localDate(1);
+  const today = useToday();
+  const tomorrow = nextDate(today);
   const goals = useQuery(api.goals.list, { deviceId: DEVICE_ID });
   const upcoming = useQuery(api.tasks.upcoming, { deviceId: DEVICE_ID, today });
   const past = useQuery(api.tasks.past, { deviceId: DEVICE_ID, today });
@@ -19,7 +20,7 @@ export default function TodayScreen() {
   const rollover = useMutation(api.tasks.rollover);
   const planThree = useMutation(api.tasks.plan);
   const lifeHappened = useMutation(api.tasks.lifeHappened);
-  const [planning, setPlanning] = useState(false);
+  const planner = useQuery(api.tasks.planner, { deviceId: DEVICE_ID });
   const [showPast, setShowPast] = useState(false);
 
   useEffect(() => {
@@ -29,7 +30,8 @@ export default function TodayScreen() {
   const active = goals?.filter((g) => g.status === 'active') ?? [];
   const pending = goals?.filter((g) => ['clarifying', 'planning', 'failed'].includes(g.status)) ?? [];
   const three = upcoming?.tasks ?? [];
-  const isPlanning = planning && three.length === 0;
+  const isPlanning = !!planner?.running && three.length === 0;
+  const planTomorrow = () => planThree({ deviceId: DEVICE_ID, forDate: tomorrow });
   const stripTitle = upcoming?.forDate === today ? "Today's three" : "Tomorrow's three";
   const openCount = three.filter((t) => t.status === 'open').length;
 
@@ -132,29 +134,20 @@ export default function TodayScreen() {
           </View>
           {isPlanning ? <Thinking label="Picking three small steps" /> : null}
           {three.map((task: TaskView) => (
-            <TaskCard key={task._id} task={task} />
+            <TaskCard key={task._id} task={task} today={today} />
           ))}
           {upcoming && three.length === 0 && !isPlanning ? (
             <Card>
-              <T tone="textSecondary">Nothing planned yet. Three small steps, picked for your current rungs.</T>
-              <Button
-                label="Plan tomorrow's three"
-                onPress={() => {
-                  setPlanning(true);
-                  planThree({ deviceId: DEVICE_ID, forDate: tomorrow });
-                }}
-              />
+              <T tone="textSecondary">
+                {planner?.error
+                  ? "Couldn't pick tomorrow's three just now. Try again in a moment."
+                  : 'Nothing planned yet. Three small steps, picked for your current rungs.'}
+              </T>
+              <Button label={planner?.error ? 'Try again' : "Plan tomorrow's three"} onPress={planTomorrow} />
             </Card>
           ) : null}
-          {upcoming?.forDate === today && openCount === 0 && three.length > 0 ? (
-            <Button
-              kind="quiet"
-              label="Plan tomorrow's three"
-              onPress={() => {
-                setPlanning(true);
-                planThree({ deviceId: DEVICE_ID, forDate: tomorrow });
-              }}
-            />
+          {upcoming?.forDate === today && openCount === 0 && three.length > 0 && !planner?.running ? (
+            <Button kind="quiet" label="Plan tomorrow's three" onPress={planTomorrow} />
           ) : null}
         </View>
       ) : null}
@@ -170,7 +163,7 @@ export default function TodayScreen() {
                       {formatDateKey(task.forDate)}
                     </T>
                   ) : null}
-                  <TaskCard task={task} past />
+                  <TaskCard task={task} today={today} past />
                 </View>
               ))
             : null}

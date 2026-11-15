@@ -10,7 +10,7 @@ import type { Doc } from '../../convex/_generated/dataModel';
 
 export type TaskView = Doc<'tasks'> & { goalTitle: string; rungTitle: string };
 
-export function TaskCard({ task, past }: { task: TaskView; past?: boolean }) {
+export function TaskCard({ task, today, past }: { task: TaskView; today: string; past?: boolean }) {
   const theme = useTheme();
   const setDone = useMutation(api.tasks.setDone);
   const miss = useMutation(api.tasks.miss);
@@ -36,7 +36,7 @@ export function TaskCard({ task, past }: { task: TaskView; past?: boolean }) {
         <Pressable
           accessibilityRole="checkbox"
           accessibilityState={{ checked: done }}
-          onPress={() => setDone({ taskId: task._id, done: !done })}
+          onPress={() => setDone({ taskId: task._id, done: !done, today })}
           hitSlop={10}
           style={[styles.check, { borderColor: theme.accent, backgroundColor: done ? theme.accent : 'transparent' }]}>
           {done ? (

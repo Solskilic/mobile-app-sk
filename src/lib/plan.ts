@@ -9,6 +9,13 @@ export function localDate(offsetDays = 0) {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
+export function nextDate(key: string) {
+  const [y, m, d] = key.split('-').map(Number);
+  const date = new Date(y, m - 1, d + 1);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+}
+
 export function formatDay(ms: number) {
   const date = new Date(ms);
   const label = date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });

@@ -76,9 +76,9 @@ async function markMissed(ctx: MutationCtx, task: Doc<"tasks">) {
 }
 
 export const setDone = mutation({
-  args: { taskId: v.id("tasks"), done: v.boolean() },
+  args: { taskId: v.id("tasks"), done: v.boolean(), today: v.string() },
   returns: v.null(),
-  handler: async (ctx, { taskId, done }) => {
+  handler: async (ctx, { taskId, done, today }) => {
     const task = await ctx.db.get("tasks", taskId);
     if (!task) return null;
     const goal = await ctx.db.get("goals", task.goalId);
@@ -94,7 +94,9 @@ export const setDone = mutation({
         at: Date.now(),
       });
     } else if (!done && task.status === "done") {
-      await ctx.db.patch("tasks", taskId, { status: "open", completedAt: undefined });
+      const past = task.forDate < today;
+      await ctx.db.patch("tasks", taskId, { status: past ? "missed" : "open", completedAt: undefined });
+      if (past && goal) await shiftFinish(ctx, goal, 1);
       const checkin = await ctx.db
         .query("checkins")
         .withIndex("by_goal", (q) => q.eq("goalId", task.goalId))
@@ -148,8 +150,38 @@ export const plan = mutation({
   args: { deviceId: v.string(), forDate: v.string() },
   returns: v.null(),
   handler: async (ctx, args) => {
+    await setPlannerState(ctx, args.deviceId, true);
     await ctx.scheduler.runAfter(0, internal.ai.generateThree, args);
     return null;
+  },
+});
+
+async function setPlannerState(ctx: MutationCtx, deviceId: string, running: boolean, error?: string) {
+  const row = await ctx.db
+    .query("planner")
+    .withIndex("by_device", (q) => q.eq("deviceId", deviceId))
+    .unique();
+  if (row) await ctx.db.patch("planner", row._id, { running, error });
+  else await ctx.db.insert("planner", { deviceId, running, error });
+}
+
+export const setPlanner = internalMutation({
+  args: { deviceId: v.string(), running: v.boolean(), error: v.optional(v.string()) },
+  returns: v.null(),
+  handler: async (ctx, { deviceId, running, error }) => {
+    await setPlannerState(ctx, deviceId, running, error);
+    return null;
+  },
+});
+
+export const planner = query({
+  args: { deviceId: v.string() },
+  handler: async (ctx, { deviceId }) => {
+    const row = await ctx.db
+      .query("planner")
+      .withIndex("by_device", (q) => q.eq("deviceId", deviceId))
+      .unique();
+    return { running: row?.running ?? false, error: row?.error ?? null };
   },
 });
 
@@ -186,13 +218,19 @@ export const replaceForDate = internalMutation({
   args: { deviceId: v.string(), forDate: v.string(), tasks: v.array(draft) },
   returns: v.null(),
   handler: async (ctx, { deviceId, forDate, tasks }) => {
+    const fresh: typeof tasks = [];
+    for (const t of tasks) {
+      const goal = await ctx.db.get("goals", t.goalId);
+      if (goal?.status === "active" && goal.currentRung === t.rungIndex) fresh.push(t);
+    }
+    if (fresh.length === 0) return null;
     const existing = await ctx.db
       .query("tasks")
       .withIndex("by_device_and_forDate", (q) => q.eq("deviceId", deviceId).eq("forDate", forDate))
       .take(20);
     for (const t of existing) if (t.status === "open") await ctx.db.delete("tasks", t._id);
     const kept = existing.filter((t) => t.status !== "open").length;
-    for (const t of tasks.slice(0, Math.max(0, 3 - kept))) {
+    for (const t of fresh.slice(0, Math.max(0, 3 - kept))) {
       await ctx.db.insert("tasks", { ...t, deviceId, forDate, status: "open", shrunk: false });
     }
     return null;
