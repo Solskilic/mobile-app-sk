@@ -16,18 +16,19 @@ export const obj = (properties: Record<string, Schema>): Schema => ({
   additionalProperties: false,
 });
 
-const SYSTEM = `You are the planning brain of a calm, big-picture goal app. You are honest, warm and concise.
-You never produce to-do overload: tasks are small and few. Identities beat checklists ("You're a 25-mile runner now").
-Write in plain, friendly English. No emojis.`;
+const SYSTEM = `You generate functional goal plans. Use concise factual labels, concrete actions and data. No slogans, motivational filler, inspirational one-liners, identity transformation, coaching catchphrases, metaphors or redundant subtitles. Never say "a little closer", "at your pace", "your next chapter", or "make room for life". An identity field is a neutral completion label such as "Completed: 5K run". Tasks are small and few. No emojis, percentages or probability numbers.
+Effort and duration estimates are provisional planning assumptions, not researched evidence. Never invent citations or promise a finish date from an assumption.`;
 
 export async function askJson<T>(name: string, schema: Schema, prompt: string): Promise<T> {
   const key = process.env.OPENAI_API_KEY;
   if (!key) throw new Error("OPENAI_API_KEY is not set on the Convex deployment");
   const res = await fetch("https://api.openai.com/v1/responses", {
     method: "POST",
+    signal: AbortSignal.timeout(100_000),
     headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
     body: JSON.stringify({
       model: MODEL,
+      max_output_tokens: 6000,
       reasoning: { effort: "low" },
       input: [
         { role: "system", content: SYSTEM },

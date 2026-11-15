@@ -9,32 +9,32 @@ import { Platform } from 'react-native';
 
 export const Colors = {
   light: {
-    text: '#000000',
-    background: '#ffffff',
-    backgroundElement: '#F0F0F3',
-    backgroundSelected: '#E0E1E6',
-    textSecondary: '#60646C',
-    accent: '#2F6B55',
-    accentSoft: '#E3EFE9',
+    text: '#172D44',
+    background: '#EAF3FA',
+    backgroundElement: '#FFFEF9',
+    backgroundSelected: '#D3E4F5',
+    textSecondary: '#50667D',
+    accent: '#225DB2',
+    accentSoft: '#DCEBFA',
     onAccent: '#FFFFFF',
-    border: '#E4E4E9',
-    realistic: '#2F6B55',
-    stretch: '#A86A12',
-    unrealistic: '#B23A48',
+    border: '#C7D9E8',
+    realistic: '#26705D',
+    stretch: '#7654A2',
+    unrealistic: '#B23A53',
   },
   dark: {
-    text: '#ffffff',
-    background: '#000000',
-    backgroundElement: '#212225',
-    backgroundSelected: '#2E3135',
-    textSecondary: '#B0B4BA',
-    accent: '#7CC4A4',
-    accentSoft: '#1D2C26',
-    onAccent: '#0B1A14',
-    border: '#2E3135',
-    realistic: '#7CC4A4',
-    stretch: '#E7B15C',
-    unrealistic: '#F08A96',
+    text: '#F3F7FC',
+    background: '#101F30',
+    backgroundElement: '#192D42',
+    backgroundSelected: '#294563',
+    textSecondary: '#B2C6DC',
+    accent: '#8DBDFC',
+    accentSoft: '#233E5D',
+    onAccent: '#102B50',
+    border: '#36516B',
+    realistic: '#8FD5BA',
+    stretch: '#C6A9EE',
+    unrealistic: '#F49FB0',
   },
 } as const;
 
@@ -76,4 +76,4 @@ export const Spacing = {
 } as const;
 
 export const BottomTabInset = Platform.select({ ios: 50, android: 80 }) ?? 0;
-export const MaxContentWidth = 800;
+export const MaxContentWidth = 560;

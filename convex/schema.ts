@@ -1,5 +1,8 @@
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
+import { researchFields } from "./researchTypes";
+import { runLogTables } from './runLogTypes';
+import { demoProfileFields } from './demoProfileTypes';
 
 export const goalStatus = v.union(
   v.literal("clarifying"),
@@ -32,7 +35,16 @@ export const resourceValidator = v.object({
   url: v.string(),
 });
 
+export const horizonValidator = v.object({
+  kind: v.union(v.literal("flexible"), v.literal("byDate"), v.literal("recurring"), v.literal("exploration")),
+  date: v.optional(v.string()),
+  detail: v.optional(v.string()),
+});
+
 export default defineSchema({
+  ...runLogTables,
+  demoProfiles: defineTable({ deviceId: v.string(), ...demoProfileFields, updatedAt: v.number() }).index('by_device', ['deviceId']),
+  progressPhotos: defineTable({ goalId: v.id('goals'), storageId: v.id('_storage'), caption: v.string(), addedAt: v.number() }).index('by_goal_and_addedAt', ['goalId', 'addedAt']),
   goals: defineTable({
     deviceId: v.string(),
     text: v.string(),
@@ -60,6 +72,7 @@ export default defineSchema({
     researching: v.optional(v.boolean()),
     error: v.optional(v.string()),
     completedAt: v.optional(v.number()),
+    routeId: v.optional(v.id("routes")),
   })
     .index("by_device", ["deviceId"])
     .index("by_device_and_status", ["deviceId", "status"]),
@@ -73,6 +86,7 @@ export default defineSchema({
     weeks: v.number(),
     kind: v.union(v.literal("explore"), v.literal("build")),
     completedAt: v.optional(v.number()),
+    routeStopKey: v.optional(v.string()),
   }).index("by_goal_and_index", ["goalId", "index"]),
 
   tasks: defineTable({
@@ -88,6 +102,7 @@ export default defineSchema({
     completedAt: v.optional(v.number()),
   })
     .index("by_device_and_forDate", ["deviceId", "forDate"])
+    .index("by_goal_and_forDate", ["goalId", "forDate"])
     .index("by_goal_and_status", ["goalId", "status"]),
 
   planner: defineTable({
@@ -112,4 +127,63 @@ export default defineSchema({
   })
     .index("by_device", ["deviceId"])
     .index("by_goal", ["goalId"]),
+
+  routes: defineTable({
+    deviceId: v.string(),
+    input: v.string(),
+    dedication: v.union(v.literal("casual"), v.literal("steady"), v.literal("allIn")),
+    weeklyHours: v.optional(v.number()),
+    currentContext: v.optional(v.string()),
+    profileContext: v.optional(v.string()),
+    demoProfile: v.optional(v.object(demoProfileFields)),
+    careerContext: v.optional(v.object({ background: v.string(), location: v.string(), targetRole: v.string() })),
+    timelineWeeks: v.optional(v.number()),
+    goalHorizons: v.optional(v.array(v.object({ goal: v.string(), horizon: horizonValidator }))),
+    startDate: v.string(),
+    status: v.union(v.literal("building"), v.literal("ready"), v.literal("failed")),
+    stage: v.optional(v.string()),
+    error: v.optional(v.string()),
+    activatedAt: v.optional(v.number()),
+    sample: v.optional(v.boolean()),
+    goals: v.array(
+      v.object({
+        key: v.string(),
+        title: v.string(),
+        summary: v.string(),
+        weeklyHours: v.number(),
+        after: v.array(v.string()),
+        afterWhy: v.optional(v.string()),
+        goalId: v.optional(v.id("goals")),
+        horizon: v.optional(horizonValidator),
+      }),
+    ),
+    stops: v.array(
+      v.object({
+        key: v.string(),
+        goalKeys: v.array(v.string()),
+        title: v.string(),
+        why: v.string(),
+        identity: v.string(),
+        milestone: v.string(),
+        effortHours: v.number(),
+        minWeeks: v.number(),
+        kind: v.union(v.literal("explore"), v.literal("build")),
+        dependsOn: v.array(v.string()),
+        origin: v.union(v.literal("goal"), v.literal("merged"), v.literal("bridge")),
+      }),
+    ),
+    synergies: v.array(v.object({ stopKey: v.string(), goalKeys: v.array(v.string()), reason: v.string() })),
+    merges: v.array(v.object({ stopKey: v.string(), dropped: v.string(), goalKeys: v.array(v.string()) })),
+  }).index("by_device", ["deviceId"])
+    .index("by_device_and_activatedAt", ["deviceId", "activatedAt"]),
+
+  ramps: defineTable({
+    deviceId: v.string(),
+    startDate: v.string(),
+    endDate: v.string(),
+    reason: v.string(),
+  }).index("by_device_and_endDate", ["deviceId", "endDate"]),
+  research: defineTable(researchFields)
+    .index("by_goal", ["goalId"])
+    .index("by_device_and_startedAt", ["deviceId", "startedAt"]),
 });

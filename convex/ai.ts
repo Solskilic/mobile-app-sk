@@ -3,8 +3,9 @@ import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import { action, internalAction, type ActionCtx } from "./_generated/server";
 import { arr, askJson, num, obj, oneOf, str } from "./openai";
+import { addDays } from "./routeEngine";
 
-const today = () => new Date().toISOString().slice(0, 10);
+const utcToday = () => new Date().toISOString().slice(0, 10);
 const message = (e: unknown) => (e instanceof Error ? e.message : String(e)).slice(0, 300);
 
 export const clarify = internalAction({
@@ -53,6 +54,7 @@ export const plan = internalAction({
   args: { goalId: v.id("goals"), tomorrow: v.string() },
   returns: v.null(),
   handler: async (ctx, { goalId, tomorrow }) => {
+    const today = addDays(tomorrow, -1);
     const goal = await ctx.runQuery(internal.goals.forAi, { goalId });
     if (!goal) return null;
     const answers = goal.questions.map((q) => `- ${q.question} -> ${q.answer}`).join("\n");
@@ -78,7 +80,7 @@ export const plan = internalAction({
           rungs: arr(
             obj({
               title: str("Rung as a scaled target, e.g. '25 miles a month'"),
-              identity: str("Identity line once reached, e.g. \"You're a 25-mile runner now\""),
+              identity: str("Neutral completion label, e.g. Completed: 25 miles this month"),
               milestone: str("How they know they've reached it, one line"),
               weeks: num("Whole weeks this rung takes at their pace"),
               kind: oneOf(["explore", "build"]),
@@ -86,7 +88,7 @@ export const plan = internalAction({
             "3 to 5 rungs, small to big. Career/academic pivots or fuzzy goals start with an 'explore' rung.",
           ),
         }),
-        `Today is ${today()}. Goal: "${goal.text}".
+        `Today is ${today}. Goal: "${goal.text}".
 Their answers:
 ${answers}
 
@@ -107,32 +109,39 @@ Rewrite the goal as SMART, give an honest realism verdict (do not flatter: if th
       await ctx.runMutation(internal.goals.setFailed, { goalId, error: message(e) });
       return null;
     }
-    await generateTracked(ctx, goal.deviceId, tomorrow);
+    await generateTracked(ctx, goal.deviceId, tomorrow, today);
     return null;
   },
 });
 
-async function generateTracked(ctx: ActionCtx, deviceId: string, forDate: string) {
+async function generateTracked(ctx: ActionCtx, deviceId: string, forDate: string, today = utcToday()) {
   await ctx.runMutation(internal.tasks.setPlanner, { deviceId, running: true });
   try {
-    await generate(ctx, deviceId, forDate);
+    await generate(ctx, deviceId, forDate, today);
     await ctx.runMutation(internal.tasks.setPlanner, { deviceId, running: false });
   } catch (e) {
     await ctx.runMutation(internal.tasks.setPlanner, { deviceId, running: false, error: message(e) });
   }
 }
 
-async function generate(ctx: ActionCtx, deviceId: string, forDate: string) {
-  const goals = await ctx.runQuery(internal.goals.liveForAi, { deviceId });
+async function generate(ctx: ActionCtx, deviceId: string, forDate: string, today: string) {
+  const goals = await ctx.runQuery(internal.goals.liveForAi, { deviceId, asOfDate: today });
   if (goals.length === 0) return;
+  const route = await ctx.runMutation(internal.routeAdherence.prepare, { deviceId, today, forDate });
+  const budget = await ctx.runQuery(internal.route.taskBudget, { deviceId, today, forDate });
+  const count = budget === null ? 3 : Math.min(3, Math.floor(budget / 5));
+  if (count === 0) return;
+  const perTask = budget === null ? 30 : Math.floor(budget / count);
   const context = goals
     .map((g, i) => {
       const rung = g.rungs[g.currentRung];
       const next = g.rungs[g.currentRung + 1];
       return `Goal #${i}: ${g.smart?.statement ?? g.title}
+  starting point and constraints: ${g.text.slice(0, 2000)}
+  manual run evidence, self-reported, NOT a completed task or milestone: ${JSON.stringify(g.runEvidence)}. Use this as a starting baseline for a small next action; never infer race completion, prescribe increasing training load, or offer medical advice.
   current rung: ${rung?.title ?? "-"} (${rung?.milestone ?? ""})${rung?.kind === "explore" ? " [exploration]" : ""}
   next rung: ${next?.title ?? "finish line"}
-  max minutes per task: ${g.minutesCap ?? 30}
+  max minutes per task: ${Math.min(g.minutesCap ?? 30, route.summary.minutesCap, perTask)}
   recently done: ${g.recentDone.join("; ") || "nothing yet"}`;
     })
     .join("\n");
@@ -144,17 +153,18 @@ async function generate(ctx: ActionCtx, deviceId: string, forDate: string) {
           goal: num("Goal # this task serves"),
           title: str("Concrete small task, max 8 words, starts with a verb"),
           why: str("One line: how this moves them up the current rung"),
-          minutes: num("10, 20 or 30, never above the goal's max"),
+          minutes: num("Minutes per task, never above the goal's max; a gentle restart may need 10 or 15"),
         }),
-        "Exactly 3 tasks",
+        `Exactly ${count} tasks`,
       ),
     }),
-    `Plan "tomorrow's three" for ${forDate}: exactly 3 small tasks spread across these active goals (every goal gets at least one if there are 3 or fewer). Each must climb toward the current rung, be doable in one sitting, and not repeat recent tasks.
-${context}`,
+    `Plan the next steps for ${forDate}: exactly ${count} small tasks spread across these active goals (each gets a turn if the task count allows). Each must climb toward the current rung, be doable in one sitting, and not repeat recent tasks.
+${context}
+Route guidance: ${route.summary.explanation} Never exceed ${route.summary.minutesCap} minutes per task. Use concrete task reasons only, no motivational filler, scores or percentages.`,
   );
-  const tasks = out.tasks.slice(0, 3).flatMap((t) => {
+  const tasks = out.tasks.slice(0, count).flatMap((t) => {
     const g = goals[t.goal] ?? goals[0];
-    const cap = g.minutesCap ?? 30;
+    const cap = Math.min(g.minutesCap ?? 30, route.summary.minutesCap, perTask);
     return [{
       goalId: g._id as Id<"goals">,
       rungIndex: g.currentRung,
@@ -167,10 +177,10 @@ ${context}`,
 }
 
 export const generateThree = internalAction({
-  args: { deviceId: v.string(), forDate: v.string() },
+  args: { deviceId: v.string(), forDate: v.string(), today: v.optional(v.string()) },
   returns: v.null(),
-  handler: async (ctx, { deviceId, forDate }) => {
-    await generateTracked(ctx, deviceId, forDate);
+  handler: async (ctx, { deviceId, forDate, today }) => {
+    await generateTracked(ctx, deviceId, forDate, today);
     return null;
   },
 });
@@ -182,23 +192,25 @@ const oneTask = obj({
 });
 
 export const swap = action({
-  args: { taskId: v.id("tasks") },
+  args: { taskId: v.id("tasks"), today: v.optional(v.string()) },
   returns: v.null(),
-  handler: async (ctx, { taskId }) => {
+  handler: async (ctx, { taskId, today = utcToday() }) => {
     const task = await ctx.runQuery(internal.tasks.forAi, { taskId });
     if (!task || task.status !== "open") return null;
+    const route = await ctx.runMutation(internal.routeAdherence.prepare, { deviceId: task.deviceId, today, forDate: task.forDate });
+    const cap = Math.min(task.minutes, task.minutesCap, route.summary.minutesCap);
     const out = await askJson<{ title: string; why: string; minutes: number }>(
       "swap",
       oneTask,
       `Goal: ${task.smart || task.goalTitle}. Current rung: ${task.rungTitle}.
 They want to swap this task for something different: "${task.title}" (${task.minutes} min).
-Give one different task of similar size (max ${task.minutesCap} minutes) that still climbs the same rung.`,
+Give one different task of similar size (max ${cap} minutes) that still climbs the same rung.`,
     );
     await ctx.runMutation(internal.tasks.rewrite, {
       taskId,
       title: out.title,
       why: out.why,
-      minutes: Math.min(task.minutesCap, Math.max(5, Math.round(out.minutes))),
+      minutes: Math.min(cap, Math.max(5, Math.round(out.minutes))),
       shrunk: false,
     });
     return null;
@@ -206,22 +218,24 @@ Give one different task of similar size (max ${task.minutesCap} minutes) that st
 });
 
 export const shrink = action({
-  args: { taskId: v.id("tasks"), minutes: v.number() },
+  args: { taskId: v.id("tasks"), minutes: v.number(), today: v.optional(v.string()) },
   returns: v.null(),
-  handler: async (ctx, { taskId, minutes }) => {
+  handler: async (ctx, { taskId, minutes, today = utcToday() }) => {
     const task = await ctx.runQuery(internal.tasks.forAi, { taskId });
     if (!task || task.status !== "open") return null;
+    const route = await ctx.runMutation(internal.routeAdherence.prepare, { deviceId: task.deviceId, today, forDate: task.forDate });
+    const cap = Math.min(minutes, task.minutes, task.minutesCap, route.summary.minutesCap);
     const out = await askJson<{ title: string; why: string; minutes: number }>(
       "shrink",
       oneTask,
       `Goal: ${task.smart || task.goalTitle}. Current rung: ${task.rungTitle}.
-Shrink this task to a ${minutes}-minute version that still counts: "${task.title}" (${task.minutes} min). Keep the spirit, cut the scope.`,
+Shrink this task to a ${cap}-minute version that still counts: "${task.title}" (${task.minutes} min). Keep the spirit, cut the scope.`,
     );
     await ctx.runMutation(internal.tasks.rewrite, {
       taskId,
       title: out.title,
       why: out.why,
-      minutes,
+      minutes: cap,
       shrunk: true,
     });
     return null;
@@ -229,12 +243,15 @@ Shrink this task to a ${minutes}-minute version that still counts: "${task.title
 });
 
 export const shrinkWeek = internalAction({
-  args: { goalId: v.id("goals") },
+  args: { goalId: v.id("goals"), today: v.optional(v.string()) },
   returns: v.null(),
-  handler: async (ctx, { goalId }) => {
+  handler: async (ctx, { goalId, today = utcToday() }) => {
     const goal = await ctx.runQuery(internal.goals.forAi, { goalId });
     if (!goal) return null;
     const open = await ctx.runQuery(internal.tasks.openForGoal, { goalId });
+    const date = today;
+    const forDate = open.map((t) => t.forDate).filter((d) => d >= date).sort()[0] ?? date;
+    const route = await ctx.runMutation(internal.routeAdherence.prepare, { deviceId: goal.deviceId, today: date, forDate });
     const rung = goal.rungs[goal.currentRung];
     const out = await askJson<{
       note: string;
@@ -244,8 +261,8 @@ export const shrinkWeek = internalAction({
     }>(
       "shrink_week",
       obj({
-        note: str("2 warm sentences to the person: what you changed this week and why. No guilt."),
-        minutesCap: num("New max minutes per task for this goal next week (10-20)"),
+        note: str("One factual sentence naming the changed task limit and the missed check-ins that caused it. No slogans."),
+        minutesCap: num("Sustainable max minutes after the temporary restart (10-20)"),
         slipDays: num("Extra days to add to the projected finish (0-7)"),
         rewrites: arr(
           obj({ title: str("Smaller version of the task"), minutes: num("Minutes") }),
@@ -253,7 +270,7 @@ export const shrinkWeek = internalAction({
         ),
       }),
       `They missed two tasks in a row on "${goal.smart?.statement ?? goal.title}" (current rung: ${rung?.title ?? "-"}, previous cap ${goal.minutesCap ?? 30} min/task).
-Life happened. Shrink next week so it is easy to restart, and explain kindly.
+Reduce next week’s task limits after the missed check-ins. Explain the changed limit factually. Rewrites must stay at or below ${route.summary.minutesCap} minutes during the temporary restart. Separately choose a sustainable minutesCap of 10-20 for after the restart; do not lock the temporary ceiling in forever. Do not mention scores or percentages.
 Open tasks: ${open.map((t) => `"${t.title}" (${t.minutes} min)`).join("; ") || "none"}.`,
     );
     const cap = Math.min(20, Math.max(5, Math.round(out.minutesCap)));
@@ -264,7 +281,7 @@ Open tasks: ${open.map((t) => `"${t.title}" (${t.minutes} min)`).join("; ") || "
       slipDays: Math.min(7, Math.max(0, Math.round(out.slipDays))),
       rewrites: open.flatMap((t, i) => {
         const r = out.rewrites[i];
-        return r ? [{ taskId: t._id, title: r.title, minutes: Math.min(cap, Math.max(5, Math.round(r.minutes))) }] : [];
+        return r ? [{ taskId: t._id, title: r.title, minutes: Math.min(t.minutes, cap, route.summary.minutesCap, Math.max(5, Math.round(r.minutes))) }] : [];
       }),
     });
     return null;

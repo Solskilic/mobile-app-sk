@@ -1,4 +1,5 @@
 import { v } from "convex/values";
+import { paginationOptsValidator, paginationResultValidator } from "convex/server";
 import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import {
@@ -9,7 +10,9 @@ import {
   type MutationCtx,
   type QueryCtx,
 } from "./_generated/server";
-import { resourceValidator, smartValidator, verdictValidator } from "./schema";
+import { goalStatus, resourceValidator, smartValidator, verdictValidator } from "./schema";
+import { climbRouteGoal, routeGoalReady } from "./route";
+import { readRunEvidence } from './runLog';
 
 export const MAX_ACTIVE = 3;
 export const DAY = 24 * 60 * 60 * 1000;
@@ -131,10 +134,11 @@ export const pause = mutation({
 
 export const resume = mutation({
   args: { goalId: v.id("goals") },
-  returns: v.union(v.literal("ok"), v.literal("limit")),
+  returns: v.union(v.literal("ok"), v.literal("limit"), v.literal("route")),
   handler: async (ctx, { goalId }) => {
     const goal = await ctx.db.get("goals", goalId);
     if (!goal || goal.status !== "paused") return "ok" as const;
+    if (goal.routeId) return "route" as const;
     const live = await liveGoals(ctx, goal.deviceId);
     if (live.length >= MAX_ACTIVE) return "limit" as const;
     await ctx.db.patch("goals", goalId, { status: "active" });
@@ -143,6 +147,12 @@ export const resume = mutation({
 });
 
 async function removeGoal(ctx: MutationCtx, goalId: Id<"goals">) {
+  const runs = await ctx.db.query('runLogs').withIndex('by_goal_and_provenance_and_date', q => q.eq('goalId', goalId)).take(103);
+  for (const run of runs) await ctx.db.delete('runLogs', run._id);
+  const photos = await ctx.db.query('progressPhotos').withIndex('by_goal_and_addedAt', q => q.eq('goalId', goalId)).take(100);
+  for (const photo of photos) { await ctx.storage.delete(photo.storageId); await ctx.db.delete('progressPhotos', photo._id); }
+  const research = await ctx.db.query("research").withIndex("by_goal", (q) => q.eq("goalId", goalId)).take(20);
+  for (const run of research) await ctx.db.delete("research", run._id);
   for (const rung of await rungsOf(ctx, goalId)) await ctx.db.delete("rungs", rung._id);
   for (const status of ["open", "done", "missed"] as const) {
     const tasks = await ctx.db
@@ -169,7 +179,7 @@ export const remove = mutation({
 });
 
 export const climb = mutation({
-  args: { goalId: v.id("goals") },
+  args: { goalId: v.id("goals"), today: v.optional(v.string()) },
   returns: v.union(
     v.null(),
     v.object({
@@ -178,9 +188,10 @@ export const climb = mutation({
       next: v.union(v.string(), v.null()),
     }),
   ),
-  handler: async (ctx, { goalId }) => {
+  handler: async (ctx, { goalId, today }) => {
     const goal = await ctx.db.get("goals", goalId);
     if (!goal || goal.status !== "active") return null;
+    if (goal.routeId) return await climbRouteGoal(ctx, goal, today ?? new Date().toISOString().slice(0, 10));
     const rungs = await rungsOf(ctx, goalId);
     const rung = rungs[goal.currentRung];
     if (!rung) return null;
@@ -210,7 +221,7 @@ export const climb = mutation({
       .take(50);
     for (const task of stale) await ctx.db.delete("tasks", task._id);
     for (const forDate of new Set(stale.map((t) => t.forDate))) {
-      await ctx.scheduler.runAfter(0, internal.ai.generateThree, { deviceId: goal.deviceId, forDate });
+      await ctx.scheduler.runAfter(0, internal.ai.generateThree, { deviceId: goal.deviceId, forDate, today });
     }
     await ctx.db.insert("checkins", {
       deviceId: goal.deviceId,
@@ -220,6 +231,32 @@ export const climb = mutation({
       at: now,
     });
     return { kind: "rung" as const, identity: rung.identity, next: next.title };
+  },
+});
+
+export const renameDemo = mutation({
+  args: { goalId: v.id('goals'), title: v.string(), fictional: v.literal(true) },
+  returns: v.null(),
+  handler: async (ctx, { goalId, title }) => {
+    const value = title.trim();
+    if (!value || value.length > 120) throw new Error('Use a goal title of 1–120 characters');
+    const goal = await ctx.db.get('goals', goalId);
+    if (!goal) throw new Error('Goal not found');
+    await ctx.db.patch('goals', goalId, { title: value });
+    if (goal.routeId) {
+      const route = await ctx.db.get('routes', goal.routeId);
+      if (route) await ctx.db.patch('routes', route._id, { goals: route.goals.map(g => g.goalId === goalId ? { ...g, title: value } : g) });
+    }
+    return null;
+  },
+});
+
+export const history = query({
+  args: { deviceId: v.string(), paginationOpts: paginationOptsValidator },
+  returns: paginationResultValidator(v.object({ _id: v.id("goals"), title: v.string(), status: goalStatus })),
+  handler: async (ctx, { deviceId, paginationOpts }) => {
+    const result = await ctx.db.query("goals").withIndex("by_device", q => q.eq("deviceId", deviceId)).order("desc").paginate(paginationOpts);
+    return { ...result, page: result.page.map(({ _id, title, status }) => ({ _id, title, status })) };
   },
 });
 
@@ -279,20 +316,23 @@ export const forAi = internalQuery({
 });
 
 export const liveForAi = internalQuery({
-  args: { deviceId: v.string() },
-  handler: async (ctx, { deviceId }) => {
+  args: { deviceId: v.string(), asOfDate: v.optional(v.string()) },
+  handler: async (ctx, { deviceId, asOfDate }) => {
     const goals = await ctx.db
       .query("goals")
       .withIndex("by_device_and_status", (q) => q.eq("deviceId", deviceId).eq("status", "active"))
       .take(MAX_ACTIVE);
+    const eligible = [];
+    for (const goal of goals) if (await routeGoalReady(ctx, goal)) eligible.push(goal);
     return await Promise.all(
-      goals.map(async (g) => {
+      eligible.map(async (g) => {
         const recent = await ctx.db
           .query("tasks")
           .withIndex("by_goal_and_status", (q) => q.eq("goalId", g._id).eq("status", "done"))
           .order("desc")
           .take(8);
-        return { ...(await withRungs(ctx, g)), recentDone: recent.map((t) => t.title) };
+        const runEvidence = asOfDate ? await readRunEvidence(ctx, { goalId: g._id, asOfDate }) : null;
+        return { ...(await withRungs(ctx, g)), recentDone: recent.map((t) => t.title), runEvidence };
       }),
     );
   },

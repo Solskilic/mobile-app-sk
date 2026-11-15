@@ -9,8 +9,23 @@
  */
 
 import type * as ai from "../ai.js";
+import type * as demoProfile from "../demoProfile.js";
+import type * as demoProfileTypes from "../demoProfileTypes.js";
+import type * as gallery from "../gallery.js";
 import type * as goals from "../goals.js";
 import type * as openai from "../openai.js";
+import type * as research from "../research.js";
+import type * as researchAgent from "../researchAgent.js";
+import type * as researchTypes from "../researchTypes.js";
+import type * as researchWeb from "../researchWeb.js";
+import type * as route from "../route.js";
+import type * as routeAdherence from "../routeAdherence.js";
+import type * as routeAi from "../routeAi.js";
+import type * as routeDemo from "../routeDemo.js";
+import type * as routeEngine from "../routeEngine.js";
+import type * as routeSample from "../routeSample.js";
+import type * as runLog from "../runLog.js";
+import type * as runLogTypes from "../runLogTypes.js";
 import type * as seed from "../seed.js";
 import type * as tasks from "../tasks.js";
 
@@ -22,8 +37,23 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   ai: typeof ai;
+  demoProfile: typeof demoProfile;
+  demoProfileTypes: typeof demoProfileTypes;
+  gallery: typeof gallery;
   goals: typeof goals;
   openai: typeof openai;
+  research: typeof research;
+  researchAgent: typeof researchAgent;
+  researchTypes: typeof researchTypes;
+  researchWeb: typeof researchWeb;
+  route: typeof route;
+  routeAdherence: typeof routeAdherence;
+  routeAi: typeof routeAi;
+  routeDemo: typeof routeDemo;
+  routeEngine: typeof routeEngine;
+  routeSample: typeof routeSample;
+  runLog: typeof runLog;
+  runLogTypes: typeof runLogTypes;
   seed: typeof seed;
   tasks: typeof tasks;
 }>;

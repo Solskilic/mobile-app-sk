@@ -26,10 +26,10 @@ export const ensureDemo = mutation({
       smart: {
         specific: "Run 75 miles in a single calendar month.",
         measurable: "Monthly mileage logged after every run.",
-        achievable: "Builds from 20 to 75 miles over 16 weeks, about 10% more each week.",
+        achievable: "A provisional 16-week build with gradual increases and room for recovery.",
         relevant: "You want running to feel like part of who you are, not a phase.",
         timeBound: "Hit a 75-mile month by mid-March.",
-        statement: "Run 75 miles in one month by mid-March, building from 20 miles a month at about 10% per week.",
+        statement: "Build gradually from 20 miles a month toward a 75-mile month, adjusting the route as you go.",
       },
       verdict: {
         level: "stretch",
