@@ -128,6 +128,20 @@ export const addStop = mutation({
       .take(MAX_RUNGS);
     if (rungs.length >= MAX_RUNGS) return "full" as const;
     const at = Math.min(goal.currentRung + 1, rungs.length);
+    let routeStopKey: string | undefined;
+    if (goal.routeId) {
+      const route = await ctx.db.get('routes', goal.routeId);
+      const latest = await ctx.db.query('routes').withIndex('by_device', q => q.eq('deviceId', goal.deviceId)).order('desc').take(100);
+      const graphGoal = route?.goals.find(g => g.goalId === goal._id);
+      if (!route || !graphGoal || latest.find(r => r.activatedAt)?._id !== route._id) return 'closed' as const;
+      routeStopKey = `research:${researchId}:${key}`;
+      const previousKey = rungs.find(r => r.index === goal.currentRung)?.routeStopKey;
+      const nextKey = rungs.find(r => r.index === at)?.routeStopKey;
+      await ctx.db.patch('routes', route._id, { stops: [
+        ...route.stops.map(s => s.key === nextKey ? { ...s, dependsOn: [...new Set([...s.dependsOn, routeStopKey!])] } : s),
+        { key: routeStopKey, goalKeys: [graphGoal.key], ...stop, why: 'A cited resource you chose to add, with time you set aside.', effortHours: Math.min(2000, graphGoal.weeklyHours * weeks), minWeeks: weeks, kind: 'build', dependsOn: previousKey ? [previousKey] : [], origin: 'goal' },
+      ] });
+    }
     for (const rung of rungs) {
       if (rung.index >= at) await ctx.db.patch("rungs", rung._id, { index: rung.index + 1 });
     }
@@ -139,6 +153,7 @@ export const addStop = mutation({
       milestone: stop.milestone,
       weeks,
       kind: "build",
+      ...(routeStopKey ? { routeStopKey } : {}),
     });
     await ctx.db.patch("goals", run.goalId, {
       estimateWeeks: rungs.reduce((sum, rung) => sum + rung.weeks, weeks),

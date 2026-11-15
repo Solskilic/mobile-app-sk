@@ -1,136 +1,67 @@
-import { useMutation, useQuery } from "convex/react";
-import { router, useLocalSearchParams } from "expo-router";
-import { useEffect, useState } from "react";
-import { Pressable, View } from "react-native";
-import { BackLink, Button, Card, Chip, Screen, T, Thinking } from "@/components/goal-ui";
-import { useToday } from "@/hooks/use-today";
-import { DEVICE_ID } from "@/lib/plan";
-import { api } from "../../../convex/_generated/api";
-import type { Doc, Id } from "../../../convex/_generated/dataModel";
-import { DEMO_GOALS, DEMO_INPUT, DEMO_STOPS } from "../../../convex/routeSample";
-import { DEDICATION_LABEL, HOURS_PER_WEEK, schedule } from "../../../convex/routeEngine";
-
-const SAMPLE: Doc<"routes"> = {
-  _id: "sample" as Id<"routes">, _creationTime: 0, deviceId: DEVICE_ID,
-  input: DEMO_INPUT, dedication: "steady" as const, status: "ready" as const, startDate: "2026-11-15",
-  goals: DEMO_GOALS, stops: DEMO_STOPS, sample: true,
-  synergies: [
-    { stopKey: "club", goalKeys: ["run", "friends"], reason: "Easy miles, familiar faces" },
-    { stopKey: "sketch", goalKeys: ["ux", "art"], reason: "Draw your way into design" },
-  ], merges: [],
-};
-const SAMPLE_PLAN = schedule({ goals: DEMO_GOALS, stops: DEMO_STOPS.map((s) => ({ ...s, done: false })), hoursPerWeek: 6, pace: 1 });
+import { useMutation, useQuery } from 'convex/react';
+import { router, useLocalSearchParams } from 'expo-router';
+import { useState } from 'react';
+import { Pressable, TextInput, View } from 'react-native';
+import { Button, Card, Chip, Screen, T, Thinking } from '@/components/goal-ui';
+import GrandListScreen from './GrandListScreen';
+import { useTheme } from '@/hooks/use-theme';
+import { useToday } from '@/hooks/use-today';
+import { DEVICE_ID } from '@/lib/plan';
+import { api } from '../../../convex/_generated/api';
+import type { Id } from '../../../convex/_generated/dataModel';
+import { DEDICATION_LABEL, HOURS_PER_WEEK } from '../../../convex/routeEngine';
 
 export default function RouteScreen() {
-  const { routeId, preview } = useLocalSearchParams<{ routeId?: string; preview?: string }>();
-  const isPreview = preview === "1";
+  const { routeId } = useLocalSearchParams<{ routeId?: string }>();
   const today = useToday();
-  const current = useQuery(api.route.current, isPreview || routeId ? "skip" : { deviceId: DEVICE_ID, today });
-  const selected = useQuery(api.route.get, isPreview || !routeId ? "skip" : { routeId: routeId as Id<"routes">, today });
-  const data = isPreview ? { route: SAMPLE, plan: SAMPLE_PLAN } : routeId ? selected : current;
-  const ensure = useMutation(api.routeDemo.ensure);
+  const theme = useTheme();
+  const current = useQuery(api.route.current, routeId ? 'skip' : { deviceId: DEVICE_ID, today });
+  const selected = useQuery(api.route.get, routeId ? { routeId: routeId as Id<'routes'>, today } : 'skip');
+  const data = routeId ? selected : current;
   const activate = useMutation(api.route.activate);
   const advance = useMutation(api.route.advance);
   const retry = useMutation(api.route.retry);
-  const setDedication = useMutation(api.route.setDedication);
+  const setContext = useMutation(api.route.setCurrentContext);
   const [why, setWhy] = useState<string | null>(null);
+  const [context, setContextText] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [season, setSeason] = useState<"now" | "next" | "later">("now");
-
-  useEffect(() => {
-    if (!isPreview && !routeId && current === null) ensure({ deviceId: DEVICE_ID, today }).catch(() => setError("Couldn't load a sample route. Try again."));
-  }, [current, ensure, isPreview, routeId, today]);
-
-  const run = async (fn: () => Promise<unknown>) => {
-    setBusy(true); setError(null);
-    try { await fn(); } catch { setError("Couldn't update the route. Please try again."); }
-    finally { setBusy(false); }
-  };
-  const toggle = (key: string) => setWhy((v) => v === key ? null : key);
+  const [season, setSeason] = useState<'now' | 'next' | 'later'>('now');
+  const run = async (fn: () => Promise<unknown>) => { setBusy(true); setError(null); try { await fn(); } catch { setError('Couldn’t update your route. Your saved list is safe. Check your connection and retry.'); } finally { setBusy(false); } };
   const route = data?.route;
   const plan = data?.plan;
+  if (data === null) return <GrandListScreen />;
+  const toggle = (key: string) => setWhy(old => old === key ? null : key);
+  const currentGoals = plan?.goals.filter(g => g.season === 'now').map(p => route?.goals.find(g => g.key === p.key)?.title).filter(Boolean) ?? [];
   return <Screen>
-    <BackLink onPress={() => router.canGoBack() ? router.back() : router.replace("/goals")} />
-    <View style={{ gap: 6 }}>
-      <T size={30} weight="700">Your route</T>
-      <T tone="textSecondary">Room for everything. Not everything at once.</T>
-    </View>
-    {!data ? <Thinking label="Loading your route" /> : null}
-    {route?.status === "building" ? <Thinking label={route.stage ?? "Mapping your goals"} /> : null}
-    {route?.status === "failed" ? <Card>
-      <T weight="700">We couldn’t finish the map.</T>
-      <T tone="textSecondary">Your list is saved. Nothing in your current plan changed.</T>
-      <Button busy={busy} label="Try again" onPress={() => run(() => retry({ routeId: route._id }))} />
-    </Card> : null}
-    {route && plan && route.status === "ready" ? <>
-      {route.sample ? <T size={13} tone="textSecondary">SAMPLE ROUTE · Illustrative stops, not a generated forecast.</T> : null}
-      <Card>
-        <T weight="700">{DEDICATION_LABEL[route.dedication]} · {HOURS_PER_WEEK[route.dedication]} hours a week</T>
-        <T size={14}>Shared across your goals. At most two routes ask for your attention at once.</T>
-        <Pressable accessibilityRole="button" onPress={() => toggle("schedule")}><T tone="accent" size={14}>Why this order?</T></Pressable>
-        {why === "schedule" ? <T size={14} tone="textSecondary">Prerequisites come first. Then the scheduler fits each stop inside your weekly hours, gives shared stops one place, and leaves the rest for another season. A shared stop can help a future goal before you focus on it.</T> : null}
-        {!isPreview ? <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
-          {(["casual", "steady", "allIn"] as const).map((d) =>
-            <Chip key={d} label={DEDICATION_LABEL[d]} selected={route.dedication === d}
-              onPress={() => run(() => setDedication({ routeId: route._id, dedication: d }))} />)}
-        </View> : null}
-      </Card>
-      <View style={{ flexDirection: "row", gap: 8 }}>
-        {(["now", "next", "later"] as const).map((s) => <Chip key={s} label={s === "now" ? "This season" : s === "next" ? "Next" : "Later"} selected={season === s} onPress={() => setSeason(s)} />)}
-      </View>
-      {plan.goals.filter((g) => g.season === season).map((p) => {
-        const g = route.goals.find((x) => x.key === p.key)!;
-        const stops = plan.stops.filter((s) => route.stops.find((x) => x.key === s.key)?.goalKeys.includes(g.key));
-        return <Card key={g.key}>
-          <T size={21} weight="700">{g.title}</T>
-          <T size={14} tone="textSecondary">{g.summary}</T>
-          {g.horizon ? <T size={13} tone="textSecondary">{g.horizon.kind === "byDate" ? `Date in mind: ${g.horizon.date}. The route will not compress to fit it.` : g.horizon.kind === "recurring" ? "An ongoing rhythm, not a finish line." : g.horizon.kind === "exploration" ? "An exploration with room to change direction." : "A flexible horizon."}{g.horizon.detail ? ` ${g.horizon.detail}` : ""}</T> : null}
-          <T size={13} tone="accent">{p.startWeek === 0 ? "Starts with this season" : "Waits for room in your week"}</T>
-          {stops.map((p, i) => {
-            const s = route.stops.find((x) => x.key === p.key)!;
-            const otherGoals = s.goalKeys.filter((k) => k !== g.key).map((k) => route.goals.find((x) => x.key === k)?.title).filter(Boolean);
-            return <View key={s.key} style={{ flexDirection: "row", gap: 12 }}>
-              <View style={{ alignItems: "center", width: 18 }}>
-                <T tone="accent">{p.season === "done" ? "✓" : "○"}</T>
-                {i < stops.length - 1 ? <View style={{ width: 1, minHeight: 30, flex: 1, backgroundColor: "#8EAA9D" }} /> : null}
-              </View>
-              <Pressable accessibilityRole="button" accessibilityLabel={s.title + ". Why this stop?"}
-                style={{ flex: 1, gap: 5, paddingBottom: 15 }} onPress={() => toggle(g.key + s.key)}>
-                <T size={16} weight="600">{s.title}</T>
-                {otherGoals.length ? <T size={12} tone="accent">↔ Also serves {otherGoals.join(" + ")}</T> : null}
-                <T size={12} tone="textSecondary">Why this stop?</T>
-                {why === g.key + s.key ? <View style={{ gap: 5 }}>
-                  <T size={14}>{s.why}</T>
-                  <T size={13} tone="textSecondary">{s.milestone}</T>
-                  {s.dependsOn.length ? <T size={12} tone="textSecondary">After: {s.dependsOn.map((k) => route.stops.find((x) => x.key === k)?.title).filter(Boolean).join(" · ")}</T> : null}
-                </View> : null}
-              </Pressable>
-            </View>;
-          })}
-          {"goalId" in g && typeof g.goalId === "string" ? <Button kind="ghost" small label="Open this goal’s ladder" onPress={() => router.push(`/goals/${g.goalId}`)} /> : null}
+    <View style={{ gap: 8 }}><T size={12} weight="600" tone="textSecondary">THE BIG PICTURE</T><T size={36} weight="600">A way forward.</T><T size={17} tone="textSecondary">Everything has a place. Not everything is for today.</T></View>
+    {!data ? <Thinking label="Finding your saved route" /> : null}
+    {route?.sample ? <Card soft><T size={13} weight="600">SAMPLE ROUTE · not live AI output</T><T size={13}>This earlier example is illustrative. Map your own list for a real route.</T></Card> : null}
+    {route?.careerContext ? <Card soft><T size={13} weight="600">PROVISIONAL CAREER ROUTE</T><T size={14}>Your background, target role and location shape this starting point. Entry requirements and recruiting dates still need current employer sources. No hiring date is promised.</T><T size={12} tone="textSecondary">After starting this season, open the goal’s cited Research panel. Unknown details stay unknown.</T></Card> : null}
+    {route?.status === 'building' ? <Card soft><Thinking label={route.stage ?? 'Reading your list'} /><T size={14}>Your list is saved. We’re finding shared stops, then fitting them into your actual week.</T><T size={12} tone="textSecondary">This may take a couple of minutes. You can return here later.</T></Card> : null}
+    {route?.status === 'failed' ? <Card><T size={22} weight="600">The map didn’t finish.</T><T tone="textSecondary">Your list is still here. Your current plan hasn’t changed.</T><Button busy={busy} label="Try mapping again" onPress={() => run(() => retry({ routeId: route._id }))} /></Card> : null}
+    {route && plan && route.status === 'ready' ? <>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}><T size={32} weight="600">{route.weeklyHours ?? HOURS_PER_WEEK[route.dedication]}<T size={15}> h / week</T></T><T size={13} tone="textSecondary">{DEDICATION_LABEL[route.dedication]} dedication{'\n'}Shared across the whole route</T></View>
+      {route.synergies.length ? <Card soft><T size={12} tone="accent" weight="700">ONE STOP. MORE THAN ONE GOAL.</T>{route.synergies.map(shared => <View key={shared.stopKey} style={{ gap: 7 }}><T size={23} weight="600">{route.stops.find(s => s.key === shared.stopKey)?.title}</T><T size={13} tone="accent">{shared.goalKeys.map(k => route.goals.find(g => g.key === k)?.title).join(' ↔ ')}</T><T size={14}>{shared.reason}</T></View>)}</Card> : null}
+      <View style={{ flexDirection: 'row', gap: 8 }}>{(['now', 'next', 'later'] as const).map(value => <Chip key={value} label={value === 'now' ? 'This season' : value === 'next' ? 'Next' : 'Later'} selected={season === value} onPress={() => setSeason(value)} />)}</View>
+      {plan.goals.filter(g => g.season === season).map(p => {
+        const goal = route.goals.find(g => g.key === p.key)!;
+        const stops = plan.stops.filter(s => route.stops.find(x => x.key === s.key)?.goalKeys.includes(goal.key));
+        return <Card key={goal.key}>
+          <T size={24} weight="600">{goal.title}</T>
+          <T size={13} tone="textSecondary">{goal.horizon?.kind === 'byDate' ? `Date in mind: ${goal.horizon.date} · pace won’t be squeezed to fit` : goal.horizon?.kind === 'exploration' ? 'Room to explore, not a finish line' : goal.horizon?.kind === 'recurring' ? 'An ongoing rhythm' : 'A flexible horizon'}</T>
+          {stops.slice(0, why === goal.key ? stops.length : 2).map((p, i) => { const stop = route.stops.find(s => s.key === p.key)!; return <View key={stop.key} style={{ flexDirection: 'row', gap: 14 }}><View style={{ width: 22, alignItems: 'center' }}><T tone="accent" weight="700">{p.season === 'done' ? '✓' : i === 0 ? '◉' : '○'}</T>{i < stops.length - 1 ? <View style={{ flex: 1, width: 2, minHeight: 22, backgroundColor: theme.border }} /> : null}</View><View style={{ flex: 1, gap: 4, paddingBottom: 12 }}><T size={16} weight="600">{stop.title}</T>{stop.goalKeys.length > 1 ? <T size={12} tone="accent">Shared stop · done once</T> : null}{i === 0 ? <T size={13} tone="textSecondary">{stop.why}</T> : null}</View></View>; })}
+          {stops.length > 2 ? <Button small kind="ghost" label={why === goal.key ? 'Show less' : `See all ${stops.length} stops`} onPress={() => toggle(goal.key)} /> : null}
+          {goal.goalId ? <Button small kind="quiet" label="Open ladder & research" onPress={() => router.push(`/goals/${goal.goalId}`)} /> : null}
         </Card>;
       })}
-      {!plan.goals.some((g) => g.season === season) ? <T tone="textSecondary">No goals waiting here. The next season opens as you finish your current stops.</T> : null}
-      {route.synergies.length ? <Card>
-        <T size={18} weight="700">One stop, two directions</T>
-        {route.synergies.map((s) => <View key={s.stopKey} style={{ gap: 3 }}>
-          <T weight="600">{route.stops.find((x) => x.key === s.stopKey)?.title}</T>
-          <T size={14} tone="accent">{s.goalKeys.map((k) => route.goals.find((g) => g.key === k)?.title).join(" ↔ ")}</T>
-          <T size={13} tone="textSecondary">{s.reason}</T>
-        </View>)}
-      </Card> : null}
-      <Card>
-        <T weight="700">A working route, not a prediction</T>
-        <T size={14} tone="textSecondary">Effort and duration are provisional planning assumptions, not researched evidence. Your weekly hours and check-ins change the order and pace. We won’t promise a finish date from an AI guess.</T>
-        {route.timelineWeeks ? <T size={14}>Your shared check-in is a time to revisit the route. Each goal keeps its own horizon.</T> : null}
-      </Card>
-      {!isPreview ? <Card>
-        <T size={14} tone="textSecondary">{route.activatedAt ? "Refresh your next leg after reaching a stop or changing your pace. Your completed work stays." : "Using this route pauses your other unfinished goals and replaces their open steps. Nothing you completed is lost."}</T>
-        <Button busy={busy} label={route.activatedAt ? "Reroute my next leg" : "Use this route"} onPress={() => run(() => route.activatedAt ? advance({ routeId: route._id, today }) : activate({ routeId: route._id, today }))} />
-      </Card> : null}
+      {!plan.goals.some(g => g.season === season) ? <T tone="textSecondary">Nothing waiting here. Space opens as you reach your current stops.</T> : null}
+      <Pressable accessibilityRole="button" onPress={() => toggle('order')}><T tone="accent" size={14}>Why this order?  {why === 'order' ? '−' : '+'}</T></Pressable>
+      {why === 'order' ? <Card><T size={14}>Prerequisites first, then your weekly capacity. Shared stops get counted once. At most two goals ask for your attention together.</T><T size={13} tone="textSecondary">Effort is an AI planning assumption, not researched proof of how long your life will take. We don’t show a precise finish date.</T></Card> : null}
+      {!route.activatedAt ? <Card><T size={12} tone="accent" weight="700">JUST FOR THIS SEASON</T><T size={21} weight="600">Where are you starting?</T><T size={14} tone="textSecondary">For {currentGoals.join(' + ')}: {currentGoals.some(t => /run|marathon|fitness/i.test(t ?? '')) ? 'what feels comfortable today, and any limits we should respect?' : 'what have you already tried, and what needs to fit around real life?'}</T><TextInput accessibilityLabel="Current season starting point" multiline maxLength={1600} value={context} onChangeText={setContextText} placeholder="A sentence is enough. Later goals can wait." placeholderTextColor={theme.textSecondary} style={{ minHeight: 100, fontSize: 17, lineHeight: 24, color: theme.text, textAlignVertical: 'top' }} /><Button busy={busy} label="Start with this season  →" onPress={() => run(async () => { await setContext({ routeId: route._id, context }); await activate({ routeId: route._id, today }); router.replace('/today'); })} /><T size={12} tone="textSecondary">This pauses your earlier unfinished plan. Completed work stays.</T></Card> : <><Button label="My small steps  →" onPress={() => router.replace('/today')} /><Button kind="quiet" busy={busy} label="Life changed. Reroute my next leg." onPress={() => run(() => advance({ routeId: route._id, today }))} /></>}
     </> : null}
     {error ? <T>{error}</T> : null}
-    <Button kind="quiet" label="Map a new grand list" onPress={() => router.push("/goals/grand-list")} />
+    {route ? <><Pressable accessibilityRole="button" onPress={() => toggle('list')}><T size={14} tone="accent">Your whole original list  {why === 'list' ? '−' : '+'}</T></Pressable>{why === 'list' ? <Card><T size={15}>{route.input}</T></Card> : null}</> : null}
+    <Button kind="ghost" label="Map a new list" onPress={() => router.push('/goals/grand-list')} />
   </Screen>;
 }

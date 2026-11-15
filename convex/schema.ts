@@ -40,6 +40,7 @@ export const horizonValidator = v.object({
 });
 
 export default defineSchema({
+  progressPhotos: defineTable({ goalId: v.id('goals'), storageId: v.id('_storage'), caption: v.string(), addedAt: v.number() }).index('by_goal_and_addedAt', ['goalId', 'addedAt']),
   goals: defineTable({
     deviceId: v.string(),
     text: v.string(),
@@ -126,6 +127,9 @@ export default defineSchema({
     deviceId: v.string(),
     input: v.string(),
     dedication: v.union(v.literal("casual"), v.literal("steady"), v.literal("allIn")),
+    weeklyHours: v.optional(v.number()),
+    currentContext: v.optional(v.string()),
+    careerContext: v.optional(v.object({ background: v.string(), location: v.string(), targetRole: v.string() })),
     timelineWeeks: v.optional(v.number()),
     goalHorizons: v.optional(v.array(v.object({ goal: v.string(), horizon: horizonValidator }))),
     startDate: v.string(),

@@ -48,7 +48,7 @@ export async function routeSchedule(ctx: QueryCtx, route: Doc<"routes">, today: 
   return schedule({
     goals: route.goals,
     stops: route.stops.map((s) => ({ ...s, done: complete.has(s.key) })),
-    hoursPerWeek: HOURS_PER_WEEK[route.dedication],
+    hoursPerWeek: route.weeklyHours ?? HOURS_PER_WEEK[route.dedication],
     pace: model.resolved < 5 ? 1 : model.pace,
   });
 }
@@ -90,13 +90,17 @@ export const taskBudget = internalQuery({
 
 export const create = mutation({
   args: {
-    deviceId: v.string(), input: v.string(), dedication, timelineWeeks: v.optional(v.number()), today: v.string(),
+    deviceId: v.string(), input: v.string(), dedication, weeklyHours: v.optional(v.number()), timelineWeeks: v.optional(v.number()), today: v.string(),
     goalHorizons: v.optional(v.array(v.object({ goal: v.string(), horizon: horizonValidator }))),
+    careerContext: v.optional(v.object({ background: v.string(), location: v.string(), targetRole: v.string() })),
   },
   returns: v.id("routes"),
   handler: async (ctx, args) => {
     validDate(args.today);
     const input = args.input.trim();
+    if (/investment bank/i.test(input) && (!args.careerContext || Object.values(args.careerContext).some(s => !s.trim()))) throw new Error('Tell us your current background, location and target entry role before mapping a career route');
+    if (args.careerContext && Object.values(args.careerContext).some(s => s.length > 1600)) throw new Error('Keep career answers under 1,600 characters');
+    if (args.weeklyHours !== undefined && (!Number.isFinite(args.weeklyHours) || args.weeklyHours < 1 || args.weeklyHours > 40)) throw new Error('Choose between 1 and 40 hours a week');
     if (!input || input.length > 6000) throw new Error("Write a goal list of up to 6,000 characters");
     if (args.timelineWeeks !== undefined && (!Number.isInteger(args.timelineWeeks) || args.timelineWeeks < 1 || args.timelineWeeks > 520))
       throw new Error("Choose a timeline between 1 and 520 weeks");
@@ -105,8 +109,9 @@ export const create = mutation({
     const recent = await ctx.db.query("routes").withIndex("by_device", (q) => q.eq("deviceId", args.deviceId)).order("desc").first();
     if (recent?.status === "building" && recent._creationTime > Date.now() - 5 * 60_000) return recent._id;
     const routeId = await ctx.db.insert("routes", {
-      deviceId: args.deviceId, input, dedication: args.dedication, timelineWeeks: args.timelineWeeks,
+      deviceId: args.deviceId, input, dedication: args.dedication, weeklyHours: args.weeklyHours, timelineWeeks: args.timelineWeeks,
       goalHorizons: args.goalHorizons,
+      careerContext: args.careerContext,
       startDate: args.today, status: "building", stage: "Reading your list", goals: [], stops: [], synergies: [], merges: [],
     });
     await ctx.scheduler.runAfter(0, internal.routeAi.build, { routeId });
@@ -154,6 +159,17 @@ export const setDedication = mutation({
     const route = await ctx.db.get("routes", routeId);
     if (!route || route.status !== "ready") return null;
     await ctx.db.patch("routes", routeId, { dedication });
+    return null;
+  },
+});
+
+export const setCurrentContext = mutation({
+  args: { routeId: v.id('routes'), context: v.string() }, returns: v.null(),
+  handler: async (ctx, { routeId, context }) => {
+    if (context.length > 1600) throw new Error('Keep this under 1,600 characters');
+    const route = await ctx.db.get('routes', routeId);
+    if (!route || route.status !== 'ready' || route.activatedAt) throw new Error('This route is already in use');
+    await ctx.db.patch('routes', routeId, { currentContext: context.trim() });
     return null;
   },
 });
@@ -221,7 +237,7 @@ export const activate = mutation({
       const mine = plan.stops.filter((p) => p.host === g.key);
       const now = scheduled.season === "now";
       const goalId = await ctx.db.insert("goals", {
-        deviceId: route.deviceId, text: g.summary, title: g.title, status: now ? "active" : "paused",
+        deviceId: route.deviceId, text: `${g.summary}${now && route.currentContext ? ` Current starting point and constraints: ${route.currentContext}` : ''}${route.careerContext ? ` Career background: ${route.careerContext.background}. Location: ${route.careerContext.location}. Target entry role: ${route.careerContext.targetRole}. Available weekly hours: ${route.weeklyHours ?? HOURS_PER_WEEK[route.dedication]}.` : ''}`, title: g.title, status: now ? "active" : "paused",
         questions: [], currentRung: 0, slipDays: 0, missStreak: 0, routeId,
         startedAt: Date.parse(today + "T12:00:00Z"),
         projectedFinish: Date.parse(today + "T12:00:00Z") + scheduled.endWeek * 7 * DAY,
@@ -255,7 +271,7 @@ export async function routeGoalReady(ctx: QueryCtx, goal: Doc<"goals">) {
   const completed = await routeProgress(ctx, route);
   const plan = schedule({
     goals: route.goals, stops: route.stops.map((s) => ({ ...s, done: completed.has(s.key) })),
-    hoursPerWeek: HOURS_PER_WEEK[route.dedication], pace: 1,
+    hoursPerWeek: route.weeklyHours ?? HOURS_PER_WEEK[route.dedication], pace: 1,
   });
   const hardPrerequisites = stop.goalKeys.flatMap((key) =>
     (route.goals.find((g) => g.key === key)?.after ?? []).flatMap((before) =>

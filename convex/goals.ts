@@ -145,6 +145,8 @@ export const resume = mutation({
 });
 
 async function removeGoal(ctx: MutationCtx, goalId: Id<"goals">) {
+  const photos = await ctx.db.query('progressPhotos').withIndex('by_goal_and_addedAt', q => q.eq('goalId', goalId)).take(100);
+  for (const photo of photos) { await ctx.storage.delete(photo.storageId); await ctx.db.delete('progressPhotos', photo._id); }
   const research = await ctx.db.query("research").withIndex("by_goal", (q) => q.eq("goalId", goalId)).take(20);
   for (const run of research) await ctx.db.delete("research", run._id);
   for (const rung of await rungsOf(ctx, goalId)) await ctx.db.delete("rungs", rung._id);

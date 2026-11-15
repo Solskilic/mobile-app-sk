@@ -1,8 +1,11 @@
-import { type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
+import { router, usePathname } from 'expo-router';
+import { useConvexConnectionState } from 'convex/react';
 import {
   ActivityIndicator,
+  AccessibilityInfo,
+  Animated,
   Modal,
-  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -48,18 +51,37 @@ export function T({
 export function Screen({ children }: { children: ReactNode }) {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
+  const path = usePathname();
+  const connected = useConvexConnectionState().isWebSocketConnected;
+  const [opacity] = useState(() => new Animated.Value(1));
+  useEffect(() => {
+    let mounted = true;
+    AccessibilityInfo.isReduceMotionEnabled().then(reduce => {
+      if (mounted && !reduce) { opacity.setValue(0); Animated.timing(opacity, { toValue: 1, duration: 220, useNativeDriver: true }).start(); }
+    }).catch(() => {});
+    return () => { mounted = false; opacity.stopAnimation(); };
+  }, [opacity]);
   return (
+    <View style={{ flex: 1, backgroundColor: theme.background }}>
     <ScrollView
       style={{ flex: 1, backgroundColor: theme.background }}
       contentContainerStyle={{
-        paddingTop: Platform.OS === 'web' ? Spacing.six + Spacing.three : insets.top + Spacing.three,
+        paddingTop: insets.top + Spacing.three,
         paddingBottom: insets.bottom + BottomTabInset + Spacing.six,
-        paddingHorizontal: Spacing.three,
+        paddingHorizontal: Spacing.four,
         alignItems: 'center',
       }}
       keyboardShouldPersistTaps="handled">
-      <View style={{ width: '100%', maxWidth: MaxContentWidth, gap: Spacing.four }}>{children}</View>
+      <Animated.View style={{ width: '100%', maxWidth: MaxContentWidth, gap: Spacing.four, opacity }}>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}><T size={25} weight="700">route<T tone="accent">↗</T></T><T size={10} tone="textSecondary">SINGLE-USER DEMO</T></View>
+        {!connected ? <T size={13} tone="textSecondary">Connecting / offline · new changes need a connection.</T> : null}
+        {children}
+      </Animated.View>
     </ScrollView>
+    <View style={{ paddingBottom: Math.max(insets.bottom, 12), paddingTop: 12, paddingHorizontal: 24, flexDirection: 'row', gap: 10, justifyContent: 'center', backgroundColor: theme.background, borderTopWidth: StyleSheet.hairlineWidth, borderColor: theme.border }}>
+      {[{ label: 'Your route', href: '/' as const }, { label: 'Today', href: '/today' as const }].map(tab => <Pressable key={tab.label} accessibilityRole="tab" accessibilityState={{ selected: path === tab.href }} onPress={() => router.replace(tab.href)} style={{ paddingVertical: 12, paddingHorizontal: 28, borderRadius: 24, backgroundColor: path === tab.href ? theme.accentSoft : 'transparent' }}><T weight="600" size={15}>{tab.label}</T></Pressable>)}
+    </View>
+    </View>
   );
 }
 
@@ -93,8 +115,8 @@ export function Button({
   small?: boolean;
 }) {
   const theme = useTheme();
-  const bg = kind === 'primary' ? theme.accent : kind === 'quiet' ? theme.backgroundSelected : 'transparent';
-  const fg = kind === 'primary' ? 'onAccent' : kind === 'quiet' ? 'text' : 'accent';
+  const bg = kind === 'primary' ? '#DCB541' : kind === 'quiet' ? theme.backgroundSelected : 'transparent';
+  const fg = kind === 'primary' ? 'text' : kind === 'quiet' ? 'text' : 'accent';
   return (
     <Pressable
       accessibilityRole="button"
@@ -108,7 +130,7 @@ export function Button({
       {busy ? (
         <ActivityIndicator color={theme[fg]} />
       ) : (
-        <T size={small ? 13 : 16} weight="600" tone={fg}>
+        <T size={small ? 13 : 16} weight="600" tone={fg} style={kind === 'primary' ? { color: '#2D2D24' } : undefined}>
           {label}
         </T>
       )}
@@ -130,6 +152,8 @@ export function Chip({ label, selected, onPress }: { label: string; selected?: b
   const theme = useTheme();
   return (
     <Pressable
+      accessibilityRole="radio"
+      accessibilityState={{ checked: !!selected }}
       onPress={onPress}
       style={({ pressed }) => [
         styles.chip,
@@ -310,8 +334,8 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
   },
   button: {
-    minHeight: 48,
-    borderRadius: 14,
+    minHeight: 54,
+    borderRadius: 18,
     paddingHorizontal: Spacing.four,
     alignItems: 'center',
     justifyContent: 'center',

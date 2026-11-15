@@ -26,9 +26,11 @@ export async function askJson<T>(name: string, schema: Schema, prompt: string): 
   if (!key) throw new Error("OPENAI_API_KEY is not set on the Convex deployment");
   const res = await fetch("https://api.openai.com/v1/responses", {
     method: "POST",
+    signal: AbortSignal.timeout(100_000),
     headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
     body: JSON.stringify({
       model: MODEL,
+      max_output_tokens: 6000,
       reasoning: { effort: "low" },
       input: [
         { role: "system", content: SYSTEM },

@@ -186,6 +186,7 @@ export function ResearchView({ data, busy, notice, onStart, onAdd, onRoute }: {
               <T weight="700">{posting.title} · {posting.company}</T>
               <T size={13} tone="textSecondary">{posting.location}{posting.postedDate ? ` · Posted ${posting.postedDate}` : ' · Posting date not listed'}</T>
               <T size={14}>{posting.requirements.join(' · ')}</T>
+              <T size={13} tone="textSecondary">Recruiting timing · {posting.recruitingTiming ?? 'Not verified; check the employer page.'}</T>
               <Source source={posting.source} />
             </Card>
           ))}

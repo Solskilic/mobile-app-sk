@@ -8,6 +8,7 @@ import { BackLink, Button, Card, Celebration, Ladder, Screen, SmartCard, T, Thin
 import { Spacing } from '@/constants/theme';
 import { formatDay, localDate } from '@/lib/plan';
 import { api } from '../../../convex/_generated/api';
+import { ProgressGallery } from '@/components/progress-gallery';
 import type { Id } from '../../../convex/_generated/dataModel';
 
 type Win = { kind: 'rung' | 'goal'; identity: string; next: string | null };
@@ -190,6 +191,7 @@ export default function GoalScreen() {
           }}
         />
       </View>
+      <ProgressGallery goalId={goalId} />
       <Celebration win={win} onClose={() => setWin(null)} />
     </Screen>
   );

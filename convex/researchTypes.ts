@@ -13,6 +13,7 @@ export const researchPosting = v.object({
   location: v.string(),
   url: v.string(),
   postedDate: v.string(),
+  recruitingTiming: v.optional(v.string()),
   requirements: v.array(v.string()),
   source: researchCitation,
 });

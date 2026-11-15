@@ -204,7 +204,7 @@ type Classified = {
   location: string;
 };
 
-type Posting = { title: string; company: string; location: string; url: string; postedDate: string; requirements: string[] };
+type Posting = { title: string; company: string; location: string; url: string; postedDate: string; requirements: string[]; recruitingTiming?: string };
 type FoundResource = {
   title: string;
   provider: string;
@@ -309,19 +309,25 @@ ${about}`,
                 location: str("Location or 'Remote'"),
                 url: str("URL of the posting itself, from search results or a page you read"),
                 postedDate: str("Date posted as shown on the page, or empty string when not shown; never guess"),
+                recruitingTiming: str('Copy the EXACT sentence about an application deadline, recruiting window or rolling applications from the employer page. Empty if not stated. Never infer a date from a recruiting cycle.'),
                 requirements: arr(str(), "Skills, tools and requirements the posting asks for, 4-10 short phrases"),
               }),
-              "6 to 8 postings",
+              "3 to 5 postings; fewer if accessible official examples are unavailable",
             ),
           }),
-          `Find 6 to 8 real, currently open job postings for an entry-level or junior ${c.target}${location ? ` near ${location} or remote` : ""}. Today is ${new Date().toISOString().slice(0, 10)}.
+          `Find 3 to 5 real, currently open job postings for ${c.target}${location ? ` near ${location} or remote` : ""}. Match the person's stated seniority and target entry role; do not silently treat an associate as an analyst or vice versa. If their entry role is unknown, label any examples as exploratory rather than suitable. Today is ${new Date().toISOString().slice(0, 10)}.
 Search the web, then open the most promising postings with read_page and extract the skills and requirements each asks for. Use company-owned careers pages or public ATS pages (Greenhouse, Lever, Ashby, Workday). Do not use LinkedIn, Indeed or Glassdoor or bypass access restrictions. Skip postings that say they are closed or expired. Do not return job-listing index pages as postings. Include the posted date only if the page shows it.
 Person's background: ${background || "unknown"}`,
         );
         const { live: postings, dropped } = await keepLive(r, found.postings.slice(0, 10));
         if (postings.length === 0) throw new Error("Couldn't find any live job postings to compare with. Try again in a bit.");
         await step(r, `Kept ${postings.length} live postings${dropped ? `, dropped ${dropped} that didn't open or weren't found in search` : ""}`);
-        await patch({ postings: postings.slice(0, 8).map((p) => ({ ...p, source: cite(r.found, p.url, `${p.title}, ${p.company}`) })) });
+        await patch({ postings: postings.slice(0, 5).map((p) => {
+          const text = r.found.checked.get(norm(p.url) ?? '')?.text ?? '';
+          const normalize = (s: string) => s.toLowerCase().replace(/\s+/g, ' ').trim();
+          const timing = p.recruitingTiming && p.recruitingTiming.length >= 15 && normalize(text).includes(normalize(p.recruitingTiming)) ? p.recruitingTiming : 'Not verified on the accessible employer page; check directly before applying.';
+          return { ...p, recruitingTiming: timing, source: cite(r.found, p.url, `${p.title}, ${p.company}`) };
+        }) });
 
         await step(r, `Reading what ${postings.length} postings ask for and comparing it with your background`);
         const g = await askJson<{ gaps: { skill: string; status: "have" | "partial" | "missing"; why: string; postings: number[]; stopTitle: string; milestone: string }[] }>(

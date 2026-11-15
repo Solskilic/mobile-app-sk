@@ -17,6 +17,7 @@ async function embed(texts: string[]): Promise<number[][]> {
   if (!key) throw new Error("OPENAI_API_KEY is not set on the Convex deployment");
   const res = await fetch("https://api.openai.com/v1/embeddings", {
     method: "POST",
+    signal: AbortSignal.timeout(30_000),
     headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
     body: JSON.stringify({ model: EMBED_MODEL, input: texts }),
   });
@@ -89,7 +90,7 @@ export const build = internalAction({
     const route = await ctx.runQuery(internal.route.forAi, { routeId });
     if (!route || route.status !== "building") return null;
     const dedication = route.dedication as Dedication;
-    const hours = HOURS_PER_WEEK[dedication];
+    const hours = route.weeklyHours ?? HOURS_PER_WEEK[dedication];
     const timeline = route.timelineWeeks ? `Optional overall check-in after ${route.timelineWeeks} weeks. This is not a deadline for each goal.` : "No global deadline.";
     const stage = (text: string) => ctx.runMutation(internal.route.setStage, { routeId, stage: text });
     try {
@@ -123,6 +124,7 @@ export const build = internalAction({
 """${route.input}"""
 Dedication: ${DEDICATION_LABEL[dedication]} (about ${hours} hours a week in total across everything). ${timeline}
 Today: ${route.startDate}. Per-goal timing supplied separately: ${JSON.stringify(route.goalHorizons ?? [])}.
+Career context supplied by the person: ${JSON.stringify(route.careerContext ?? null)}. Unknown or 'not sure' means UNKNOWN, not permission to invent a background or assume eligibility. For investment banking distinguish analyst recruiting from associate recruiting; never assume an MBA or particular credential guarantees entry. Career stops are provisional hypotheses until current employer sources are checked. Preserve role, seniority and geography in the summary. Never promise a hiring date.
 Keep capacity separate from each goal's horizon. Flexible goals have no deadline; recurring goals continue; exploration is an open inquiry. Preserve explicit per-goal dates, never invent dates for untimed goals. A date must never compress effort or body/calendar adaptation.
 
 Split this into distinct goals (merge items that are clearly the same goal, keep vague ones vague but concrete enough to act on). Group the list into at most ${MAX_GOALS} goal families without discarding any aspiration; include every original idea in a summary. Preserve their stated priority order.`,
