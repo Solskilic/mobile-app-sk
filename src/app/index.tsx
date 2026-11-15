@@ -5,6 +5,7 @@ import { Pressable, View } from 'react-native';
 
 import { Button, Card, Ladder, Screen, T, Thinking } from '@/components/goal-ui';
 import { TaskCard, type TaskView } from '@/components/task-card';
+import { RouteStatus } from '@/components/route/RouteStatus';
 import { Spacing } from '@/constants/theme';
 import { useToday } from '@/hooks/use-today';
 import { DEVICE_ID, formatDateKey, formatDay, nextDate } from '@/lib/plan';
@@ -32,7 +33,9 @@ export default function TodayScreen() {
   const three = upcoming?.tasks ?? [];
   const isPlanning = !!planner?.running && three.length === 0;
   const planTomorrow = () => planThree({ deviceId: DEVICE_ID, forDate: tomorrow });
-  const stripTitle = upcoming?.forDate === today ? "Today's three" : "Tomorrow's three";
+  const stripTitle = active.some((g) => g.routeId)
+    ? upcoming?.forDate === today ? "Today's steps" : "Tomorrow's steps"
+    : upcoming?.forDate === today ? "Today's three" : "Tomorrow's three";
   const openCount = three.filter((t) => t.status === 'open').length;
 
   return (
@@ -47,6 +50,7 @@ export default function TodayScreen() {
       </View>
 
       {goals === undefined ? <Thinking label="Loading your ladders" /> : null}
+      <Button kind="quiet" label="Your route · see what comes first" onPress={() => router.push('/goals/route')} />
 
       {active.map((goal) => {
         const now = goal.rungs[goal.currentRung];
@@ -70,7 +74,7 @@ export default function TodayScreen() {
                     </T>
                   ) : null}
                 </T>
-                {goal.projectedFinish ? (
+              {goal.projectedFinish && !goal.routeId ? (
                   <T size={15} tone="accent" weight="600">
                     At this pace: {formatDay(goal.projectedFinish)}
                     {goal.slipDays > 0 ? (
@@ -112,6 +116,7 @@ export default function TodayScreen() {
 
       {active.length > 0 ? (
         <View style={{ gap: Spacing.three }}>
+          <RouteStatus today={today} forDate={upcoming?.forDate ?? tomorrow} />
           <View style={{ flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between' }}>
             <View>
               <T size={22} weight="700">

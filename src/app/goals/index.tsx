@@ -28,6 +28,7 @@ export default function GoalsScreen() {
         <T tone="textSecondary">{live} of 3 in motion. Fewer goals, more finish lines.</T>
       </View>
       <Button label="Add a goal" onPress={() => router.push('/goals/new')} />
+      <Button kind="quiet" label="See your route · map a grand list" onPress={() => router.push('/goals/route')} />
       {goals === undefined ? <Thinking label="Loading" /> : null}
       {goals?.map((goal) => (
         <Pressable key={goal._id} onPress={() => router.push(`/goals/${goal._id}`)}>

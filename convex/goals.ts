@@ -131,10 +131,11 @@ export const pause = mutation({
 
 export const resume = mutation({
   args: { goalId: v.id("goals") },
-  returns: v.union(v.literal("ok"), v.literal("limit")),
+  returns: v.union(v.literal("ok"), v.literal("limit"), v.literal("route")),
   handler: async (ctx, { goalId }) => {
     const goal = await ctx.db.get("goals", goalId);
     if (!goal || goal.status !== "paused") return "ok" as const;
+    if (goal.routeId) return "route" as const;
     const live = await liveGoals(ctx, goal.deviceId);
     if (live.length >= MAX_ACTIVE) return "limit" as const;
     await ctx.db.patch("goals", goalId, { status: "active" });
