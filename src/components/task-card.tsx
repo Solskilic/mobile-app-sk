@@ -1,14 +1,17 @@
 import { useAction, useMutation } from 'convex/react';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import Animated, {
   ReduceMotion,
+  Easing,
+  interpolateColor,
   useAnimatedStyle,
   useSharedValue,
   withSequence,
+  withSpring,
   withTiming,
 } from 'react-native-reanimated';
-import { resize } from './route-graphics';
+import { FlowReveal } from './route-graphics';
 
 import { Button, Card, T } from '@/components/goal-ui';
 import { Spacing } from '@/constants/theme';
@@ -37,24 +40,74 @@ export function TaskCard({
   const [error, setError] = useState('');
   const done = task.status === 'done';
   const missed = task.status === 'missed';
-  const scale = useSharedValue(1);
-  const opacity = useSharedValue(missed ? 0.65 : 1);
+  const previousStatus = useRef(task.status);
+  const completion = useSharedValue(done ? 1 : 0);
+  const checkScale = useSharedValue(1);
+  const opacity = useSharedValue(missed ? 0.72 : 1);
   useEffect(() => {
-    scale.value = withSequence(
-      withTiming(task.status === 'done' ? 1.025 : 0.99, {
-        duration: 100,
-        reduceMotion: ReduceMotion.System,
-      }),
-      withTiming(1, { duration: 180, reduceMotion: ReduceMotion.System }),
-    );
-    opacity.value = withTiming(task.status === 'missed' ? 0.65 : 1, {
-      duration: 220,
+    completion.value = withSpring(done ? 1 : 0, {
+      duration: 560,
+      dampingRatio: 0.85,
       reduceMotion: ReduceMotion.System,
     });
-  }, [task.status, scale, opacity]);
+    if (previousStatus.current !== task.status) {
+      checkScale.value = withSequence(
+        ReduceMotion.System,
+        withTiming(1.18, { duration: 200, reduceMotion: ReduceMotion.System }),
+        withSpring(1, {
+          duration: 500,
+          dampingRatio: 0.65,
+          reduceMotion: ReduceMotion.System,
+        }),
+      );
+      previousStatus.current = task.status;
+    }
+    opacity.value = withTiming(missed ? 0.72 : 1, {
+      duration: 560,
+      easing: Easing.inOut(Easing.cubic),
+      reduceMotion: ReduceMotion.System,
+    });
+  }, [task.status, done, missed, checkScale, completion, opacity]);
   const motion = useAnimatedStyle(() => ({
     opacity: opacity.value,
-    transform: [{ scale: scale.value }],
+    backgroundColor: interpolateColor(
+      completion.value,
+      [0, 1],
+      [theme.backgroundElement, theme.accentSoft],
+    ),
+    borderColor: interpolateColor(
+      completion.value,
+      [0, 1],
+      [theme.border, theme.accent],
+    ),
+  }));
+  const checkMotion = useAnimatedStyle(() => ({
+    backgroundColor: interpolateColor(
+      completion.value,
+      [0, 1],
+      [theme.backgroundElement, theme.accent],
+    ),
+    borderRadius: 18 - 6 * completion.value,
+    transform: [{ scale: checkScale.value }],
+  }));
+  const tickMotion = useAnimatedStyle(() => ({
+    opacity: completion.value,
+    transform: [
+      { scale: 0.4 + 0.6 * completion.value },
+      { rotate: `${-35 * (1 - completion.value)}deg` },
+    ],
+  }));
+  const labelMotion = useAnimatedStyle(() => ({
+    color: interpolateColor(
+      completion.value,
+      [0, 1],
+      [theme.text, theme.accent],
+    ),
+    transform: [{ translateX: 4 * completion.value }],
+  }));
+  const strikeMotion = useAnimatedStyle(() => ({
+    opacity: completion.value,
+    width: `${Math.max(0, Math.min(1, completion.value)) * 100}%`,
   }));
 
   const run = async (kind: 'swap' | 'shrink') => {
@@ -72,8 +125,13 @@ export function TaskCard({
   };
 
   return (
-    <Animated.View style={motion} layout={resize}>
-      <Card>
+    <Animated.View
+      style={[
+        { borderRadius: 20, borderWidth: StyleSheet.hairlineWidth },
+        motion,
+      ]}
+    >
+      <Card style={{ backgroundColor: 'transparent', borderWidth: 0 }}>
         <View style={styles.row}>
           <Pressable
             accessibilityRole="checkbox"
@@ -87,28 +145,49 @@ export function TaskCard({
               )
             }
             hitSlop={10}
-            style={[
-              styles.check,
-              {
-                borderColor: theme.accent,
-                backgroundColor: done ? theme.accent : 'transparent',
-              },
-            ]}
+            style={{
+              minWidth: 44,
+              minHeight: 44,
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
           >
-            {done ? (
-              <T size={16} weight="800" tone="onAccent">
+            <Animated.View
+              aria-hidden
+              style={[styles.check, { borderColor: theme.accent }, checkMotion]}
+            >
+              <Animated.Text
+                style={[
+                  { color: theme.onAccent, fontSize: 22, fontWeight: '800' },
+                  tickMotion,
+                ]}
+              >
                 ✓
-              </T>
-            ) : null}
+              </Animated.Text>
+            </Animated.View>
           </Pressable>
           <View style={{ flex: 1, gap: 2 }}>
-            <T
-              size={21}
-              weight="600"
-              style={done ? { textDecorationLine: 'line-through' } : undefined}
-            >
-              {task.title}
-            </T>
+            <View style={{ alignSelf: 'flex-start', maxWidth: '100%' }}>
+              <Animated.Text
+                style={[
+                  { fontSize: 21, lineHeight: 28, fontWeight: '600' },
+                  labelMotion,
+                ]}
+              >
+                {task.title}
+              </Animated.Text>
+              <Animated.View
+                style={[
+                  {
+                    position: 'absolute',
+                    top: '50%',
+                    height: 1.5,
+                    backgroundColor: theme.accent,
+                  },
+                  strikeMotion,
+                ]}
+              />
+            </View>
             <T size={22} weight="700" tone="accent">
               {task.minutes} min{task.shrunk ? ' · shrunk' : ''}
             </T>
@@ -124,16 +203,21 @@ export function TaskCard({
             {task.goalTitle} · {task.rungTitle}
           </T>
         </View>
-        <Pressable accessibilityRole="button" onPress={() => setWhy(!why)}>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityState={{ expanded: why }}
+          onPress={() => setWhy(!why)}
+          style={{ minHeight: 44, justifyContent: 'center' }}
+        >
           <T size={13} tone="accent">
             Why this step? {why ? '−' : '+'}
           </T>
         </Pressable>
-        {why ? (
+        <FlowReveal open={why}>
           <T size={14} tone="textSecondary">
             {task.why}
           </T>
-        ) : null}
+        </FlowReveal>
         {error ? <T size={13}>{error}</T> : null}
         {!past && task.status === 'open' ? (
           <View style={styles.actions}>
@@ -176,9 +260,9 @@ export function TaskCard({
 const styles = StyleSheet.create({
   row: { flexDirection: 'row', gap: Spacing.three, alignItems: 'center' },
   check: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     borderWidth: 2,
     alignItems: 'center',
     justifyContent: 'center',

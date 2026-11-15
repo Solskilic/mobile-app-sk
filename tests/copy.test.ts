@@ -5,7 +5,7 @@ test('active screens use functional copy instead of motivational one-liners', ()
   const paths = [
     'src/components/route/GrandListScreen.tsx',
     'src/components/route/RouteScreen.tsx',
-    'src/components/route/RouteStatus.tsx',
+    'src/app/profile.tsx',
     'src/app/today.tsx',
     'src/app/goals/[id].tsx',
     'src/components/research/research-view.tsx',

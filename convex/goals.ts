@@ -234,6 +234,23 @@ export const climb = mutation({
   },
 });
 
+export const renameDemo = mutation({
+  args: { goalId: v.id('goals'), title: v.string(), fictional: v.literal(true) },
+  returns: v.null(),
+  handler: async (ctx, { goalId, title }) => {
+    const value = title.trim();
+    if (!value || value.length > 120) throw new Error('Use a goal title of 1–120 characters');
+    const goal = await ctx.db.get('goals', goalId);
+    if (!goal) throw new Error('Goal not found');
+    await ctx.db.patch('goals', goalId, { title: value });
+    if (goal.routeId) {
+      const route = await ctx.db.get('routes', goal.routeId);
+      if (route) await ctx.db.patch('routes', route._id, { goals: route.goals.map(g => g.goalId === goalId ? { ...g, title: value } : g) });
+    }
+    return null;
+  },
+});
+
 export const history = query({
   args: { deviceId: v.string(), paginationOpts: paginationOptsValidator },
   returns: paginationResultValidator(v.object({ _id: v.id("goals"), title: v.string(), status: goalStatus })),

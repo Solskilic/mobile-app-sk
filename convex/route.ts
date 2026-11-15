@@ -4,6 +4,7 @@ import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import { internalMutation, internalQuery, mutation, query, type QueryCtx, type MutationCtx } from "./_generated/server";
 import schema, { horizonValidator } from "./schema";
+import { demoProfileFields, profileContext as formatProfile, validateDemoProfile } from './demoProfileTypes';
 import { schedule, adherence, HOURS_PER_WEEK, addDays, type Schedule } from "./routeEngine";
 
 const dedication = v.union(v.literal("casual"), v.literal("steady"), v.literal("allIn"));
@@ -53,7 +54,7 @@ export async function routeSchedule(ctx: QueryCtx, route: Doc<"routes">, today: 
   });
 }
 
-async function activeRoute(ctx: QueryCtx, deviceId: string) {
+export async function activeRoute(ctx: QueryCtx, deviceId: string) {
   const route = await ctx.db.query("routes").withIndex("by_device_and_activatedAt", q => q.eq("deviceId", deviceId)).order("desc").first();
   return route?.activatedAt !== undefined ? route : null;
 }
@@ -100,7 +101,7 @@ export const taskBudget = internalQuery({
 
 export const create = mutation({
   args: {
-    deviceId: v.string(), input: v.string(), dedication, weeklyHours: v.optional(v.number()), timelineWeeks: v.optional(v.number()), today: v.string(),
+    deviceId: v.string(), input: v.string(), dedication, weeklyHours: v.optional(v.number()), timelineWeeks: v.optional(v.number()), today: v.string(), profileContext: v.optional(v.string()), demoProfile: v.optional(v.object(demoProfileFields)),
     goalHorizons: v.optional(v.array(v.object({ goal: v.string(), horizon: horizonValidator }))),
     careerContext: v.optional(v.object({ background: v.string(), location: v.string(), targetRole: v.string() })),
   },
@@ -108,6 +109,8 @@ export const create = mutation({
   handler: async (ctx, args) => {
     validDate(args.today);
     const input = args.input.trim();
+    if (args.demoProfile) validateDemoProfile(args.demoProfile);
+    if ((args.profileContext?.length ?? 0) > 3200) throw new Error('Keep demo profile context under 3,200 characters');
     if (/investment bank/i.test(input) && (!args.careerContext || Object.values(args.careerContext).some(s => !s.trim()))) throw new Error('Tell us your current background, location and target entry role before mapping a career route');
     if (args.careerContext && Object.values(args.careerContext).some(s => s.length > 1600)) throw new Error('Keep career answers under 1,600 characters');
     if (args.weeklyHours !== undefined && (!Number.isFinite(args.weeklyHours) || args.weeklyHours < 1 || args.weeklyHours > 40)) throw new Error('Choose between 1 and 40 hours a week');
@@ -119,7 +122,7 @@ export const create = mutation({
     const recent = await ctx.db.query("routes").withIndex("by_device", (q) => q.eq("deviceId", args.deviceId)).order("desc").first();
     if (recent?.status === "building" && recent._creationTime > Date.now() - 5 * 60_000) return recent._id;
     const routeId = await ctx.db.insert("routes", {
-      deviceId: args.deviceId, input, dedication: args.dedication, weeklyHours: args.weeklyHours, timelineWeeks: args.timelineWeeks,
+      deviceId: args.deviceId, input, dedication: args.dedication, weeklyHours: args.demoProfile?.weeklyHours ?? args.weeklyHours, timelineWeeks: args.timelineWeeks, profileContext: args.demoProfile ? formatProfile(args.demoProfile) : args.profileContext, demoProfile: args.demoProfile,
       goalHorizons: args.goalHorizons,
       careerContext: args.careerContext,
       startDate: args.today, status: "building", stage: "Reading your list", goals: [], stops: [], synergies: [], merges: [],
@@ -247,7 +250,7 @@ export const activate = mutation({
       const mine = plan.stops.filter((p) => p.host === g.key);
       const now = scheduled.season === "now";
       const goalId = await ctx.db.insert("goals", {
-        deviceId: route.deviceId, text: `${g.summary}${now && route.currentContext ? ` Current starting point and constraints: ${route.currentContext}` : ''}${route.careerContext ? ` Career background: ${route.careerContext.background}. Location: ${route.careerContext.location}. Target entry role: ${route.careerContext.targetRole}. Available weekly hours: ${route.weeklyHours ?? HOURS_PER_WEEK[route.dedication]}.` : ''}`, title: g.title, status: now ? "active" : "paused",
+        deviceId: route.deviceId, text: `${g.summary}${route.profileContext ? ` ${route.profileContext}` : ''}${now && route.currentContext ? ` Current starting point and constraints: ${route.currentContext}` : ''}${route.careerContext ? ` Career background: ${route.careerContext.background}. Location: ${route.careerContext.location}. Target entry role: ${route.careerContext.targetRole}. Available weekly hours: ${route.weeklyHours ?? HOURS_PER_WEEK[route.dedication]}.` : ''}`, title: g.title, status: now ? "active" : "paused",
         questions: [], currentRung: 0, slipDays: 0, missStreak: 0, routeId,
         startedAt: Date.parse(today + "T12:00:00Z"),
         projectedFinish: Date.parse(today + "T12:00:00Z") + scheduled.endWeek * 7 * DAY,
@@ -262,6 +265,12 @@ export const activate = mutation({
         });
       }
       goals.push({ ...g, goalId });
+    }
+    if (route.demoProfile) {
+      const oldProfile = await ctx.db.query('demoProfiles').withIndex('by_device', q => q.eq('deviceId', route.deviceId)).unique();
+      const value = { deviceId: route.deviceId, ...route.demoProfile, updatedAt: Date.now() };
+      if (oldProfile) await ctx.db.patch('demoProfiles', oldProfile._id, value);
+      else await ctx.db.insert('demoProfiles', value);
     }
     await ctx.db.patch("routes", routeId, { goals, activatedAt: Date.now(), startDate: today });
     await ctx.scheduler.runAfter(0, internal.ai.generateThree, { deviceId: route.deviceId, forDate: addDays(today, 1), today });

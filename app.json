@@ -14,7 +14,7 @@
     "android": {
       "package": "com.solskilic.route",
       "adaptiveIcon": {
-        "backgroundColor": "#F8F5EB",
+        "backgroundColor": "#EAF3FA",
         "foregroundImage": "./assets/images/route-icon.png"
       },
       "predictiveBackGestureEnabled": false
@@ -29,7 +29,7 @@
       [
         "expo-splash-screen",
         {
-          "backgroundColor": "#F8F5EB"
+          "backgroundColor": "#EAF3FA"
         }
       ]
     ],

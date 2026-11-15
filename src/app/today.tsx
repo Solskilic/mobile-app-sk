@@ -4,7 +4,6 @@ import { useEffect, useState } from 'react';
 import { View } from 'react-native';
 import { Button, Card, Screen, T, Thinking } from '@/components/goal-ui';
 import { TaskCard } from '@/components/task-card';
-import { RouteStatus } from '@/components/route/RouteStatus';
 import { useToday } from '@/hooks/use-today';
 import { DEVICE_ID, formatDateKey } from '@/lib/plan';
 import { api } from '../../convex/_generated/api';
@@ -60,9 +59,6 @@ export default function TodayScreen() {
           min
         </T>
       </View>
-      {route?.route.activatedAt ? (
-        <RouteStatus today={today} forDate={forDate} />
-      ) : null}
       {!upcoming ? <Thinking label="Loading steps" /> : null}
       {planner?.running ? <Thinking label="Generating steps" /> : null}
       {tasks.slice(0, 3).map((task) => (

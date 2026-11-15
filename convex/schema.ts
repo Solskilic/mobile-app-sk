@@ -2,6 +2,7 @@ import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 import { researchFields } from "./researchTypes";
 import { runLogTables } from './runLogTypes';
+import { demoProfileFields } from './demoProfileTypes';
 
 export const goalStatus = v.union(
   v.literal("clarifying"),
@@ -42,6 +43,7 @@ export const horizonValidator = v.object({
 
 export default defineSchema({
   ...runLogTables,
+  demoProfiles: defineTable({ deviceId: v.string(), ...demoProfileFields, updatedAt: v.number() }).index('by_device', ['deviceId']),
   progressPhotos: defineTable({ goalId: v.id('goals'), storageId: v.id('_storage'), caption: v.string(), addedAt: v.number() }).index('by_goal_and_addedAt', ['goalId', 'addedAt']),
   goals: defineTable({
     deviceId: v.string(),
@@ -100,6 +102,7 @@ export default defineSchema({
     completedAt: v.optional(v.number()),
   })
     .index("by_device_and_forDate", ["deviceId", "forDate"])
+    .index("by_goal_and_forDate", ["goalId", "forDate"])
     .index("by_goal_and_status", ["goalId", "status"]),
 
   planner: defineTable({
@@ -131,6 +134,8 @@ export default defineSchema({
     dedication: v.union(v.literal("casual"), v.literal("steady"), v.literal("allIn")),
     weeklyHours: v.optional(v.number()),
     currentContext: v.optional(v.string()),
+    profileContext: v.optional(v.string()),
+    demoProfile: v.optional(v.object(demoProfileFields)),
     careerContext: v.optional(v.object({ background: v.string(), location: v.string(), targetRole: v.string() })),
     timelineWeeks: v.optional(v.number()),
     goalHorizons: v.optional(v.array(v.object({ goal: v.string(), horizon: horizonValidator }))),

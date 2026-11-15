@@ -9,6 +9,8 @@
  */
 
 import type * as ai from "../ai.js";
+import type * as demoProfile from "../demoProfile.js";
+import type * as demoProfileTypes from "../demoProfileTypes.js";
 import type * as gallery from "../gallery.js";
 import type * as goals from "../goals.js";
 import type * as openai from "../openai.js";
@@ -35,6 +37,8 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   ai: typeof ai;
+  demoProfile: typeof demoProfile;
+  demoProfileTypes: typeof demoProfileTypes;
   gallery: typeof gallery;
   goals: typeof goals;
   openai: typeof openai;

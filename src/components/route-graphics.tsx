@@ -1,5 +1,11 @@
-import { useEffect, type ReactNode } from 'react';
-import { Platform, Text, View } from 'react-native';
+import { useEffect, useState, type ReactNode } from 'react';
+import {
+  Platform,
+  Text,
+  View,
+  type StyleProp,
+  type ViewStyle,
+} from 'react-native';
 import Svg, {
   Circle,
   G,
@@ -11,10 +17,10 @@ import Svg, {
 import Animated, {
   Easing,
   FadeInDown,
-  FadeOut,
   LinearTransition,
   ReduceMotion,
   useAnimatedProps,
+  useAnimatedStyle,
   useSharedValue,
   withTiming,
 } from 'react-native-reanimated';
@@ -25,28 +31,79 @@ const Bar = Animated.createAnimatedComponent(Rect);
 export const enter =
   Platform.OS === 'web'
     ? undefined
-    : FadeInDown.duration(280)
+    : FadeInDown.duration(560)
         .withInitialValues({ transform: [{ translateY: 12 }] })
         .reduceMotion(ReduceMotion.System);
 export const resize =
   Platform.OS === 'web'
     ? undefined
-    : LinearTransition.duration(240).reduceMotion(ReduceMotion.System);
+    : LinearTransition.duration(560).reduceMotion(ReduceMotion.System);
 
-export function MotionGroup({ children }: { children: ReactNode }) {
+export function MotionGroup({
+  children,
+  style,
+}: {
+  children: ReactNode;
+  style?: StyleProp<ViewStyle>;
+}) {
+  const progress = useSharedValue(0);
+  useEffect(() => {
+    progress.value = withTiming(1, {
+      duration: 680,
+      easing: Easing.bezier(0.22, 1, 0.36, 1),
+      reduceMotion: ReduceMotion.System,
+    });
+  }, [progress]);
+  const motion = useAnimatedStyle(() => ({
+    opacity: progress.value,
+    transform: [{ translateY: 22 * (1 - progress.value) }],
+  }));
+  return (
+    <Animated.View style={[{ gap: 20 }, style, motion]} collapsable={false}>
+      {children}
+    </Animated.View>
+  );
+}
+
+export function FlowReveal({
+  open,
+  children,
+  style,
+}: {
+  open: boolean;
+  children: ReactNode;
+  style?: StyleProp<ViewStyle>;
+}) {
+  const [height, setHeight] = useState(0);
+  const visibleHeight = useSharedValue(0);
+  const progress = useSharedValue(0);
+  useEffect(() => {
+    const config = {
+      duration: 560,
+      easing: Easing.bezier(0.22, 1, 0.36, 1),
+      reduceMotion: ReduceMotion.System,
+    };
+    visibleHeight.value = withTiming(open ? height : 0, config);
+    progress.value = withTiming(open ? 1 : 0, config);
+  }, [open, height, progress, visibleHeight]);
+  const motion = useAnimatedStyle(() => ({
+    height: visibleHeight.value,
+    opacity: progress.value,
+  }));
   return (
     <Animated.View
-      entering={enter}
-      exiting={
-        Platform.OS === 'web'
-          ? undefined
-          : FadeOut.duration(130).reduceMotion(ReduceMotion.System)
-      }
-      layout={resize}
-      style={{ gap: 20 }}
-      collapsable={false}
+      style={[style, { overflow: 'hidden' }, motion]}
+      pointerEvents={open ? 'auto' : 'none'}
+      aria-hidden={!open}
+      accessibilityElementsHidden={!open}
+      importantForAccessibility={open ? 'auto' : 'no-hide-descendants'}
     >
-      {children}
+      <View
+        style={{ position: 'absolute', top: 0, left: 0, right: 0 }}
+        onLayout={(event) => setHeight(event.nativeEvent.layout.height)}
+      >
+        {children}
+      </View>
     </Animated.View>
   );
 }
@@ -55,22 +112,24 @@ function DrawPath({
   d,
   color,
   width = 3,
+  length,
 }: {
   d: string;
   color: string;
   width?: number;
+  length: number;
 }) {
   const progress = useSharedValue(0);
   useEffect(() => {
     progress.value = 0;
     progress.value = withTiming(1, {
-      duration: 650,
-      easing: Easing.out(Easing.cubic),
+      duration: 780,
+      easing: Easing.inOut(Easing.cubic),
       reduceMotion: ReduceMotion.System,
     });
   }, [d, progress]);
   const props = useAnimatedProps(() => ({
-    strokeDashoffset: 1000 * (1 - progress.value),
+    strokeDashoffset: length * (1 - progress.value),
   }));
   return (
     <Stroke
@@ -79,7 +138,7 @@ function DrawPath({
       stroke={color}
       strokeWidth={width}
       strokeLinecap="round"
-      strokeDasharray="1000 1000"
+      strokeDasharray={`${length} ${length}`}
       animatedProps={props}
     />
   );
@@ -120,25 +179,25 @@ export function GoalGlyph({
         {music ? (
           <>
             <Path d="M28 42V21l20-5v23M28 26l20-5" />
-            <Circle cx="22" cy="43" r="6" fill="#D9AF36" />
-            <Circle cx="42" cy="40" r="6" fill="#D9AF36" />
+            <Circle cx="22" cy="43" r="6" fill={theme.accent} />
+            <Circle cx="42" cy="40" r="6" fill={theme.accent} />
           </>
         ) : run ? (
           <>
             <Path
               d="M14 41c12-2 14-9 17-19l9 8-4 8 14 7v7H15z"
-              fill="#D9AF36"
+              fill={theme.accent}
             />
             <Path d="M23 38l8 5m-2-10 8 5M15 47h35" />
           </>
         ) : career ? (
           <>
-            <Path d="M13 25l19-10 19 10z" fill="#D9AF36" />
+            <Path d="M13 25l19-10 19 10z" fill={theme.accent} />
             <Path d="M17 30v16m10-16v16m10-16v16m10-16v16M13 50h38M11 54h42" />
           </>
         ) : (
           <>
-            <Circle cx="22" cy="25" r="6" fill="#D9AF36" />
+            <Circle cx="22" cy="25" r="6" fill={theme.accent} />
             <Circle cx="43" cy="25" r="6" />
             <Path d="M11 46v-4c0-8 22-8 22 0v4m2-12c10-2 18 2 18 8v4" />
           </>
@@ -178,7 +237,8 @@ export function StepStrip({
       {current > 0 ? (
         <DrawPath
           d={`M${x(0)} 18H${x(Math.min(current, n - 1))}`}
-          color="#D9AF36"
+          length={Math.max(1, x(Math.min(current, n - 1)) - x(0))}
+          color={theme.accent}
         />
       ) : null}
       {Array.from({ length: n }, (_, i) => (
@@ -187,12 +247,12 @@ export function StepStrip({
             cx={x(i)}
             cy="18"
             r={i === current ? 10 : 7}
-            fill={i < current ? '#D9AF36' : theme.backgroundElement}
+            fill={i < current ? theme.accent : theme.backgroundElement}
             stroke={i <= current ? theme.accent : theme.border}
             strokeWidth={i === current ? 2.5 : 1.5}
           />
           {i < current ? (
-            <Circle cx={x(i)} cy="18" r="2" fill={theme.text} />
+            <Circle cx={x(i)} cy="18" r="2" fill={theme.onAccent} />
           ) : null}
         </G>
       ))}
@@ -239,19 +299,28 @@ export function RouteNetwork({
         ))}
       </View>
       <Svg width="100%" height="74" viewBox="0 0 300 74">
-        <DrawPath
-          d={
-            visible.length > 1
-              ? 'M75 3V20Q75 40 100 40H150M225 3V20Q225 40 200 40H150V61'
-              : 'M150 3V61'
-          }
-          color={theme.accent}
-        />
+        {visible.length > 1 ? (
+          <>
+            <DrawPath
+              d="M75 3C75 35 112 40 150 40"
+              length={94}
+              color={theme.accent}
+            />
+            <DrawPath
+              d="M225 3C225 35 188 40 150 40"
+              length={94}
+              color={theme.accent}
+            />
+            <DrawPath d="M150 40V61" length={21} color={theme.accent} />
+          </>
+        ) : (
+          <DrawPath d="M150 3V61" length={58} color={theme.accent} />
+        )}
         <Circle
           cx="150"
           cy="59"
           r="12"
-          fill="#D9AF36"
+          fill={theme.accent}
           stroke={theme.text}
           strokeWidth="2"
         />
@@ -260,11 +329,11 @@ export function RouteNetwork({
           y1="59"
           x2="155"
           y2="59"
-          stroke={theme.text}
+          stroke={theme.onAccent}
           strokeWidth="2"
         />
-        <Circle cx="144" cy="59" r="3" fill={theme.text} />
-        <Circle cx="156" cy="59" r="3" fill={theme.text} />
+        <Circle cx="144" cy="59" r="3" fill={theme.onAccent} />
+        <Circle cx="156" cy="59" r="3" fill={theme.onAccent} />
       </Svg>
       <Text
         style={{
@@ -298,6 +367,7 @@ export function EvidenceGlyph({ count }: { count?: number }) {
       <Svg width="94" height="56" viewBox="0 0 94 56">
         <DrawPath
           d="M25 14H42Q52 14 52 28T66 42H76M25 42H42Q52 42 52 28T66 14H76"
+          length={75}
           color={theme.accent}
           width={2}
         />
@@ -324,7 +394,7 @@ export function EvidenceGlyph({ count }: { count?: number }) {
           cx="78"
           cy="28"
           r="12"
-          fill="#D9AF36"
+          fill={theme.accent}
           stroke={theme.text}
           strokeWidth="1.6"
         />
@@ -350,7 +420,7 @@ function DistanceBar({
   const value = useSharedValue(0);
   useEffect(() => {
     value.value = withTiming(width, {
-      duration: 500,
+      duration: 720,
       easing: Easing.out(Easing.cubic),
       reduceMotion: ReduceMotion.System,
     });
@@ -404,7 +474,7 @@ export function RunDistanceGraphic({
             <DistanceBar
               width={(152 * r.distance) / max}
               y={i * 29 + 4}
-              color="#D9AF36"
+              color={theme.accent}
             />
             <SvgText x="250" y={i * 29 + 14} fill={theme.text} fontSize="11">
               {r.distance / 1000} km
@@ -441,7 +511,7 @@ export function GalleryGlyph() {
         stroke={theme.text}
         strokeWidth="1.8"
       />
-      <Circle cx="43" cy="21" r="4" fill="#D9AF36" />
+      <Circle cx="43" cy="21" r="4" fill={theme.accent} />
       <Path
         d="M18 37l10-12 9 9 5-5 8 8"
         stroke={theme.text}

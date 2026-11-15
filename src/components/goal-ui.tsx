@@ -1,15 +1,16 @@
-import { type ReactNode } from 'react';
+import { useEffect, type ReactNode } from 'react';
 import Animated, {
-  FadeIn,
-  FadeInDown,
+  interpolateColor,
   ReduceMotion,
+  useAnimatedStyle,
+  useSharedValue,
+  withSpring,
 } from 'react-native-reanimated';
 import { router, usePathname } from 'expo-router';
 import { useConvexConnectionState } from 'convex/react';
 import {
   ActivityIndicator,
   Modal,
-  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -24,6 +25,9 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { formatDay, rungDates } from '@/lib/plan';
+import { MotionGroup } from '@/components/route-graphics';
+
+const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
 type Tone =
   | 'text'
@@ -85,12 +89,7 @@ export function Screen({ children }: { children: ReactNode }) {
         }}
         keyboardShouldPersistTaps="handled"
       >
-        <Animated.View
-          entering={
-            Platform.OS === 'web'
-              ? undefined
-              : FadeIn.duration(180).reduceMotion(ReduceMotion.System)
-          }
+        <MotionGroup
           style={{
             width: '100%',
             maxWidth: MaxContentWidth,
@@ -108,9 +107,16 @@ export function Screen({ children }: { children: ReactNode }) {
             <T size={25} weight="700">
               route<T tone="accent">↗</T>
             </T>
-            <T size={10} tone="textSecondary">
-              SINGLE-USER DEMO
-            </T>
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => router.push('/profile')}
+              hitSlop={8}
+              style={{ minHeight: 44, justifyContent: 'center' }}
+            >
+              <T size={12} weight="600" tone="accent">
+                Demo profile
+              </T>
+            </Pressable>
           </View>
           {!connected ? (
             <T size={13} tone="textSecondary">
@@ -118,7 +124,7 @@ export function Screen({ children }: { children: ReactNode }) {
             </T>
           ) : null}
           {children}
-        </Animated.View>
+        </MotionGroup>
       </ScrollView>
       <View
         style={{
@@ -146,11 +152,14 @@ export function Screen({ children }: { children: ReactNode }) {
               paddingVertical: 12,
               paddingHorizontal: 28,
               borderRadius: 24,
-              backgroundColor:
-                path === tab.href ? theme.accentSoft : 'transparent',
+              backgroundColor: path === tab.href ? theme.accent : 'transparent',
             }}
           >
-            <T weight="600" size={15}>
+            <T
+              weight="600"
+              size={15}
+              tone={path === tab.href ? 'onAccent' : 'textSecondary'}
+            >
               {tab.label}
             </T>
           </Pressable>
@@ -171,14 +180,7 @@ export function Card({
 }) {
   const theme = useTheme();
   return (
-    <Animated.View
-      entering={
-        Platform.OS === 'web'
-          ? undefined
-          : FadeInDown.duration(260)
-              .withInitialValues({ transform: [{ translateY: 10 }] })
-              .reduceMotion(ReduceMotion.System)
-      }
+    <View
       style={[
         styles.card,
         {
@@ -189,7 +191,7 @@ export function Card({
       ]}
     >
       {children}
-    </Animated.View>
+    </View>
   );
 }
 
@@ -209,37 +211,57 @@ export function Button({
   small?: boolean;
 }) {
   const theme = useTheme();
+  const press = useSharedValue(1);
+  const motion = useAnimatedStyle(() => ({
+    transform: [{ scale: press.value }],
+  }));
   const bg =
     kind === 'primary'
-      ? '#DCB541'
+      ? theme.accent
       : kind === 'quiet'
         ? theme.backgroundSelected
         : 'transparent';
-  const fg = kind === 'primary' ? 'text' : kind === 'quiet' ? 'text' : 'accent';
+  const fg =
+    kind === 'primary' ? 'onAccent' : kind === 'quiet' ? 'text' : 'accent';
   return (
-    <Pressable
+    <AnimatedPressable
       accessibilityRole="button"
+      accessibilityState={{ disabled: !!(disabled || busy), busy: !!busy }}
       onPress={onPress}
+      onPressIn={() =>
+        press.set(
+          withSpring(0.96, {
+            duration: 450,
+            dampingRatio: 0.8,
+            reduceMotion: ReduceMotion.System,
+          }),
+        )
+      }
+      onPressOut={() =>
+        press.set(
+          withSpring(1, {
+            duration: 500,
+            dampingRatio: 0.7,
+            reduceMotion: ReduceMotion.System,
+          }),
+        )
+      }
       disabled={disabled || busy}
-      style={({ pressed }) => [
+      style={[
         styles.button,
         small && styles.buttonSmall,
-        { backgroundColor: bg, opacity: disabled ? 0.4 : pressed ? 0.75 : 1 },
+        { backgroundColor: bg, opacity: disabled ? 0.4 : 1 },
+        motion,
       ]}
     >
       {busy ? (
         <ActivityIndicator color={theme[fg]} />
       ) : (
-        <T
-          size={small ? 13 : 16}
-          weight="600"
-          tone={fg}
-          style={kind === 'primary' ? { color: '#2D2D24' } : undefined}
-        >
+        <T size={small ? 13 : 16} weight="600" tone={fg}>
           {label}
         </T>
       )}
-    </Pressable>
+    </AnimatedPressable>
   );
 }
 
@@ -315,6 +337,57 @@ type LadderGoal = {
   routeId?: string;
 };
 
+function RungBar({
+  height,
+  done,
+  current,
+  explore,
+  children,
+}: {
+  height: number;
+  done: boolean;
+  current: boolean;
+  explore: boolean;
+  children: ReactNode;
+}) {
+  const theme = useTheme();
+  const barHeight = useSharedValue(0);
+  const state = useSharedValue(done ? 2 : current ? 1 : 0);
+  useEffect(() => {
+    const spring = {
+      duration: 560,
+      dampingRatio: 0.8,
+      reduceMotion: ReduceMotion.System,
+    };
+    barHeight.value = withSpring(height, spring);
+    state.value = withSpring(done ? 2 : current ? 1 : 0, spring);
+  }, [height, done, current, barHeight, state]);
+  const motion = useAnimatedStyle(() => ({
+    height: barHeight.value,
+    backgroundColor: interpolateColor(
+      state.value,
+      [0, 1, 2],
+      [theme.backgroundSelected, theme.accentSoft, theme.accent],
+    ),
+    borderColor: interpolateColor(
+      state.value,
+      [0, 1, 2],
+      [theme.border, theme.accent, theme.accent],
+    ),
+  }));
+  return (
+    <Animated.View
+      style={[
+        styles.ladderBar,
+        { borderStyle: explore && !done ? 'dashed' : 'solid' },
+        motion,
+      ]}
+    >
+      {children}
+    </Animated.View>
+  );
+}
+
 export function Ladder({
   goal,
   rungs,
@@ -324,7 +397,6 @@ export function Ladder({
   rungs: LadderRung[];
   large?: boolean;
 }) {
-  const theme = useTheme();
   const dates = rungDates(
     goal.routeId ? { ...goal, projectedFinish: undefined } : goal,
     rungs,
@@ -346,21 +418,11 @@ export function Ladder({
                 width: '100%',
               }}
             >
-              <View
-                style={[
-                  styles.ladderBar,
-                  {
-                    height,
-                    backgroundColor: done
-                      ? theme.accent
-                      : current
-                        ? theme.accentSoft
-                        : 'transparent',
-                    borderColor: done || current ? theme.accent : theme.border,
-                    borderStyle:
-                      rung.kind === 'explore' && !done ? 'dashed' : 'solid',
-                  },
-                ]}
+              <RungBar
+                height={height}
+                done={done}
+                current={current}
+                explore={rung.kind === 'explore'}
               >
                 <T
                   size={11}
@@ -377,7 +439,7 @@ export function Ladder({
                         ? 'NEXT'
                         : ''}
                 </T>
-              </View>
+              </RungBar>
             </View>
             <T
               size={large ? 13 : 12}
@@ -505,18 +567,34 @@ export function Celebration({
   onClose: () => void;
 }) {
   const theme = useTheme();
+  const progress = useSharedValue(0);
+  useEffect(() => {
+    progress.value = withSpring(win ? 1 : 0, {
+      duration: 560,
+      dampingRatio: 0.8,
+      reduceMotion: ReduceMotion.System,
+    });
+  }, [win, progress]);
+  const motion = useAnimatedStyle(() => ({
+    opacity: progress.value,
+    transform: [
+      { scale: 0.88 + 0.12 * progress.value },
+      { translateY: 24 * (1 - progress.value) },
+    ],
+  }));
   return (
     <Modal
       visible={!!win}
       transparent
-      animationType="fade"
+      animationType="none"
       onRequestClose={onClose}
     >
       <View style={styles.backdrop}>
-        <View
+        <Animated.View
           style={[
             styles.celebrate,
             { backgroundColor: theme.background, borderColor: theme.accent },
+            motion,
           ]}
         >
           <T size={44}>{win?.kind === 'goal' ? '🏔️' : '🪜'}</T>
@@ -532,7 +610,7 @@ export function Celebration({
             </T>
           ) : null}
           <Button label="Keep climbing" onPress={onClose} />
-        </View>
+        </Animated.View>
       </View>
     </Modal>
   );

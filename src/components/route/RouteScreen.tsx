@@ -1,4 +1,4 @@
-import { useMutation, usePaginatedQuery, useQuery } from 'convex/react';
+import { useMutation, useQuery } from 'convex/react';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
 import { Pressable, TextInput, View } from 'react-native';
@@ -11,6 +11,7 @@ import { api } from '../../../convex/_generated/api';
 import type { Id } from '../../../convex/_generated/dataModel';
 import { DEDICATION_LABEL, HOURS_PER_WEEK } from '../../../convex/routeEngine';
 import {
+  FlowReveal,
   GoalGlyph,
   MotionGroup,
   RouteNetwork,
@@ -35,12 +36,6 @@ export default function RouteScreen() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [season, setSeason] = useState<'now' | 'next' | 'later'>('now');
-  const [history, setHistory] = useState(false);
-  const saved = usePaginatedQuery(
-    api.goals.history,
-    history ? { deviceId: DEVICE_ID } : 'skip',
-    { initialNumItems: 20 },
-  );
   const run = async (fn: () => Promise<unknown>) => {
     setBusy(true);
     setError(null);
@@ -147,8 +142,12 @@ export default function RouteScreen() {
               <T size={15}> h / week</T>
             </T>
             <T size={13} tone="textSecondary">
-              {DEDICATION_LABEL[route.dedication]} dedication{'\n'}Shared across
-              the whole route
+              {route.demoProfile
+                ? route.demoProfile.structure === 'routine'
+                  ? 'Routine sessions'
+                  : 'Flexible sessions'
+                : `${DEDICATION_LABEL[route.dedication]} dedication`}
+              {'\n'}Shared across the whole route
             </T>
           </View>
           <View style={{ flexDirection: 'row', gap: 8 }}>
@@ -186,13 +185,15 @@ export default function RouteScreen() {
                   label="Connection details"
                   onPress={() => toggle('shared')}
                 />
-                {why === 'shared'
-                  ? route.synergies.map((s) => (
+                <FlowReveal open={why === 'shared'}>
+                  <View style={{ gap: 8 }}>
+                    {route.synergies.map((s) => (
                       <T size={13} key={s.stopKey}>
                         {s.reason}
                       </T>
-                    ))
-                  : null}
+                    ))}
+                  </View>
+                </FlowReveal>
               </Card>
             ) : null}
             {plan.goals
@@ -227,54 +228,58 @@ export default function RouteScreen() {
                             ? 'Recurring'
                             : 'Flexible timing'}
                     </T>
-                    {stops
-                      .slice(0, why === goal.key ? stops.length : 2)
-                      .map((p, i) => {
-                        const stop = route.stops.find((s) => s.key === p.key)!;
+                    <View>
+                      {stops.map((stopPlan, i) => {
+                        const stop = route.stops.find(
+                          (s) => s.key === stopPlan.key,
+                        )!;
                         return (
-                          <View
+                          <FlowReveal
                             key={stop.key}
-                            style={{ flexDirection: 'row', gap: 14 }}
+                            open={i < 2 || why === goal.key}
                           >
-                            <View style={{ width: 22, alignItems: 'center' }}>
-                              <T tone="accent" weight="700">
-                                {p.season === 'done'
-                                  ? '✓'
-                                  : i === 0
-                                    ? '◉'
-                                    : '○'}
-                              </T>
-                              {i < stops.length - 1 ? (
-                                <View
-                                  style={{
-                                    flex: 1,
-                                    width: 2,
-                                    minHeight: 22,
-                                    backgroundColor: theme.border,
-                                  }}
-                                />
-                              ) : null}
-                            </View>
-                            <View
-                              style={{ flex: 1, gap: 4, paddingBottom: 12 }}
-                            >
-                              <T size={16} weight="600">
-                                {stop.title}
-                              </T>
-                              {stop.goalKeys.length > 1 ? (
-                                <T size={12} tone="accent">
-                                  Shared stop · done once
+                            <View style={{ flexDirection: 'row', gap: 14 }}>
+                              <View style={{ width: 22, alignItems: 'center' }}>
+                                <T tone="accent" weight="700">
+                                  {stopPlan.season === 'done'
+                                    ? '✓'
+                                    : i === 0
+                                      ? '◉'
+                                      : '○'}
                                 </T>
-                              ) : null}
-                              {why === goal.key ? (
-                                <T size={13} tone="textSecondary">
-                                  {stop.why}
+                                {i < stops.length - 1 ? (
+                                  <View
+                                    style={{
+                                      flex: 1,
+                                      width: 2,
+                                      minHeight: 22,
+                                      backgroundColor: theme.border,
+                                    }}
+                                  />
+                                ) : null}
+                              </View>
+                              <View
+                                style={{ flex: 1, gap: 4, paddingBottom: 12 }}
+                              >
+                                <T size={16} weight="600">
+                                  {stop.title}
                                 </T>
-                              ) : null}
+                                {stop.goalKeys.length > 1 ? (
+                                  <T size={12} tone="accent">
+                                    Shared activity
+                                  </T>
+                                ) : null}
+                                <FlowReveal open={why === goal.key}>
+                                  <T size={13} tone="textSecondary">
+                                    {stop.why}
+                                  </T>
+                                </FlowReveal>
+                              </View>
                             </View>
-                          </View>
+                          </FlowReveal>
                         );
                       })}
+                    </View>
                     {stops.length > 2 ? (
                       <Button
                         small
@@ -321,34 +326,46 @@ export default function RouteScreen() {
           ) : null}
           {!route.activatedAt ? (
             <Card>
-              <T size={12} tone="accent" weight="700">
-                CURRENT-SEASON CONTEXT
-              </T>
-              <T size={21} weight="600">
-                Current experience
-              </T>
-              <T size={14} tone="textSecondary">
-                For {currentGoals.join(' + ')}:{' '}
-                {currentGoals.some((t) => /run|marathon|fitness/i.test(t ?? ''))
-                  ? 'current running experience and any activity limits?'
-                  : 'current experience and scheduling constraints?'}
-              </T>
-              <TextInput
-                accessibilityLabel="Current season starting point"
-                multiline
-                maxLength={1600}
-                value={context}
-                onChangeText={setContextText}
-                placeholder="Current experience or constraints"
-                placeholderTextColor={theme.textSecondary}
-                style={{
-                  minHeight: 100,
-                  fontSize: 17,
-                  lineHeight: 24,
-                  color: theme.text,
-                  textAlignVertical: 'top',
-                }}
-              />
+              {!route.profileContext ? (
+                <>
+                  {' '}
+                  <T size={12} tone="accent" weight="700">
+                    CURRENT-SEASON CONTEXT
+                  </T>
+                  <T size={21} weight="600">
+                    Current experience
+                  </T>
+                  <T size={14} tone="textSecondary">
+                    For {currentGoals.join(' + ')}:{' '}
+                    {currentGoals.some((t) =>
+                      /run|marathon|fitness/i.test(t ?? ''),
+                    )
+                      ? 'current running experience and any activity limits?'
+                      : 'current experience and scheduling constraints?'}
+                  </T>
+                  <TextInput
+                    accessibilityLabel="Current season starting point"
+                    multiline
+                    maxLength={1600}
+                    value={context}
+                    onChangeText={setContextText}
+                    placeholder="Current experience or constraints"
+                    placeholderTextColor={theme.textSecondary}
+                    style={{
+                      minHeight: 100,
+                      fontSize: 17,
+                      lineHeight: 24,
+                      color: theme.text,
+                      textAlignVertical: 'top',
+                    }}
+                  />
+                </>
+              ) : (
+                <T size={13} tone="textSecondary">
+                  Uses your fictional demo profile’s starting point, time and
+                  preferences.
+                </T>
+              )}
               <Button
                 busy={busy}
                 label="Activate route  →"
@@ -396,48 +413,6 @@ export default function RouteScreen() {
             </Card>
           ) : null}
         </>
-      ) : null}
-      <Button
-        kind="ghost"
-        label={history ? 'Close saved goals' : 'Saved goals'}
-        onPress={() => setHistory(!history)}
-      />
-      {history ? (
-        <Card>
-          <T size={22} weight="600">
-            Saved goals
-          </T>
-          {saved.status === 'LoadingFirstPage' ? (
-            <Thinking label="Loading saved goals" />
-          ) : null}
-          {saved.results.map((goal) => (
-            <View key={goal._id} style={{ gap: 4 }}>
-              <T size={12} tone="textSecondary">
-                {goal.status === 'done'
-                  ? 'Completed'
-                  : goal.status === 'paused'
-                    ? 'Paused'
-                    : goal.status}
-              </T>
-              <Button
-                kind="quiet"
-                label={goal.title}
-                onPress={() => router.push(`/goals/${goal._id}`)}
-              />
-            </View>
-          ))}
-          {saved.status === 'Exhausted' && !saved.results.length ? (
-            <T>No saved goals.</T>
-          ) : null}
-          {saved.status === 'CanLoadMore' || saved.status === 'LoadingMore' ? (
-            <Button
-              kind="ghost"
-              label="More saved goals"
-              busy={saved.status === 'LoadingMore'}
-              onPress={() => saved.loadMore(20)}
-            />
-          ) : null}
-        </Card>
       ) : null}
       <Button
         kind="ghost"

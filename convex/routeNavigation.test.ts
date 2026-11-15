@@ -14,6 +14,59 @@ beforeEach(() => {
 });
 afterEach(() => vi.useRealTimers());
 
+test('archived check-ins do not occupy a replacement route’s three visible actions', async () => {
+  const t = setup();
+  const oldId = await draft(t);
+  await t.mutation(api.route.activate, { routeId: oldId, today });
+  const oldGoal = (await t.query(api.route.get, { routeId: oldId, today }))!
+    .route.goals[0].goalId!;
+  await t.run(async (ctx) => {
+    for (let i = 0; i < 3; i++)
+      await ctx.db.insert('tasks', {
+        deviceId: 'navigation',
+        goalId: oldGoal,
+        rungIndex: 0,
+        title: 'Old completed action',
+        why: '',
+        minutes: 5,
+        forDate: '2026-11-16',
+        status: 'done',
+        shrunk: false,
+      });
+  });
+  const nextId = await draft(t);
+  await t.mutation(api.route.activate, { routeId: nextId, today });
+  const goalId = (await t.query(api.route.get, { routeId: nextId, today }))!
+    .route.goals[0].goalId!;
+  await t.mutation(internal.tasks.replaceForDate, {
+    deviceId: 'navigation',
+    forDate: '2026-11-16',
+    tasks: [1, 2, 3].map((i) => ({
+      goalId,
+      rungIndex: 0,
+      title: `New action ${i}`,
+      why: '',
+      minutes: 5,
+    })),
+  });
+  const upcoming = await t.query(api.tasks.upcoming, {
+    deviceId: 'navigation',
+    today,
+  });
+  expect(upcoming.tasks).toHaveLength(3);
+  expect(upcoming.tasks.every((task) => task.goalId === goalId)).toBe(true);
+  expect(
+    await t.run((ctx) =>
+      ctx.db
+        .query('tasks')
+        .withIndex('by_goal_and_status', (q) =>
+          q.eq('goalId', oldGoal).eq('status', 'done'),
+        )
+        .take(10),
+    ),
+  ).toHaveLength(3);
+});
+
 function draft(t: TestCtx, deviceId = 'navigation') {
   return t.run((ctx) =>
     ctx.db.insert('routes', {

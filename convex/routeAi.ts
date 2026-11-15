@@ -124,6 +124,7 @@ export const build = internalAction({
 """${route.input}"""
 Dedication: ${DEDICATION_LABEL[dedication]} (about ${hours} hours a week in total across everything). ${timeline}
 Today: ${route.startDate}. Per-goal timing supplied separately: ${JSON.stringify(route.goalHorizons ?? [])}.
+Explicit fictional demo planning context: ${route.profileContext ?? 'No additional context supplied'}. Use stated experience, motivation, constraints and preferred structure to shape the route; do not infer missing traits.
 Career context supplied by the person: ${JSON.stringify(route.careerContext ?? null)}. Unknown or 'not sure' means UNKNOWN, not permission to invent a background or assume eligibility. For investment banking distinguish analyst recruiting from associate recruiting; never assume an MBA or particular credential guarantees entry. Career stops are provisional hypotheses until current employer sources are checked. Preserve role, seniority and geography in the summary. Never promise a hiring date.
 Keep capacity separate from each goal's horizon. Flexible goals have no deadline; recurring goals continue; exploration is an open inquiry. Preserve explicit per-goal dates, never invent dates for untimed goals. A date must never compress effort or body/calendar adaptation.
 
@@ -161,6 +162,7 @@ Split this into distinct goals (merge items that are clearly the same goal, keep
             "decompose_goal",
             obj({ steps: arr(stepSchema, "3 to 6 stops, from first step to finish line") }),
             `Goal: ${g.title}. ${g.summary}
+Fictional demo context: ${route.profileContext ?? 'No additional context supplied'}. Preserve stated experience and constraints rather than restarting from zero or inventing experience. Match the preferred practice structure.
 They can give this goal about ${g.weeklyHours} hours a week. Its horizon: ${JSON.stringify(g.horizon)}. Do not shorten effort to fit a deadline. Recurring/exploration goals get a bounded first chapter, not a claim that the activity is permanently finished.
 Break it into 3-6 milestone stops along a route, small to big. Fuzzy or career goals start with an "explore" stop. Use dependsOn for real prerequisites only; stops that can happen in any order should not depend on each other.`,
           ),
