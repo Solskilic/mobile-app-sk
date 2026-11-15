@@ -66,8 +66,8 @@ export function buildAdherenceContext(tasks: TaskOutcome[], latestRamp: Ramp | n
     startDate,
     endDate: addDays(startDate, 2),
     reason: model.missedDaysInRow >= 2
-      ? "A few days did not go to plan, so the next three days build back gently."
-      : "It has been a little while, so the next three days ease you back in.",
+      ? "Recent missed check-ins triggered a three-day re-entry limit."
+      : "Four or more inactive days triggered a three-day re-entry limit.",
   } : null;
   const ramp = newRamp ?? (latestRamp ? { startDate: latestRamp.startDate, endDate: latestRamp.endDate, reason: latestRamp.reason } : null);
   const rampDay = ramp && forDate >= ramp.startDate && forDate <= ramp.endDate
@@ -75,14 +75,14 @@ export function buildAdherenceContext(tasks: TaskOutcome[], latestRamp: Ramp | n
   const weakDay = model.weakDays.includes(weekdayOf(forDate));
   const minutesCap = Math.min(model.minutesCap, model.shortBeatsLong ? 10 : 30, weakDay ? 15 : 30, rampDay ? [10, 15, 20][rampDay - 1] : 30);
   const explanation = rampDay
-    ? `Day ${rampDay} of your gentle restart: keep each step to ${minutesCap} minutes or less.`
+    ? `Re-entry day ${rampDay} of 3 · ${minutesCap} min maximum per step.`
     : weakDay
-      ? `${DAY_NAMES[weekdayOf(forDate)]} have been harder to fit in, so these steps stay small.`
+      ? `${DAY_NAMES[weekdayOf(forDate)]} have more missed check-ins; the task limit is ${minutesCap} minutes.`
       : model.shortBeatsLong
-        ? "Short sessions have been easier to finish, so these steps stay small."
+        ? "Shorter sessions have more completed check-ins; the task limit is reduced."
         : model.resolved === 0
-          ? "Start with a few manageable steps; your route will adapt as you go."
-          : "Your next steps fit the pace you have been able to keep.";
+          ? "Initial limits are based on the weekly hours you entered."
+          : "Task limits use your recent check-in history.";
   return {
     model,
     summary: { minutesCap, explanation, ramp: rampDay ? ramp : null, rampDay },

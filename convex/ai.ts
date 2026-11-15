@@ -80,7 +80,7 @@ export const plan = internalAction({
           rungs: arr(
             obj({
               title: str("Rung as a scaled target, e.g. '25 miles a month'"),
-              identity: str("Identity line once reached, e.g. \"You're a 25-mile runner now\""),
+              identity: str("Neutral completion label, e.g. Completed: 25 miles this month"),
               milestone: str("How they know they've reached it, one line"),
               weeks: num("Whole weeks this rung takes at their pace"),
               kind: oneOf(["explore", "build"]),
@@ -160,7 +160,7 @@ async function generate(ctx: ActionCtx, deviceId: string, forDate: string, today
     }),
     `Plan the next steps for ${forDate}: exactly ${count} small tasks spread across these active goals (each gets a turn if the task count allows). Each must climb toward the current rung, be doable in one sitting, and not repeat recent tasks.
 ${context}
-Route guidance: ${route.summary.explanation} Never exceed ${route.summary.minutesCap} minutes per task. Keep explanations warm and do not mention scores or percentages.`,
+Route guidance: ${route.summary.explanation} Never exceed ${route.summary.minutesCap} minutes per task. Use concrete task reasons only, no motivational filler, scores or percentages.`,
   );
   const tasks = out.tasks.slice(0, count).flatMap((t) => {
     const g = goals[t.goal] ?? goals[0];
@@ -261,7 +261,7 @@ export const shrinkWeek = internalAction({
     }>(
       "shrink_week",
       obj({
-        note: str("2 warm sentences to the person: what you changed this week and why. No guilt."),
+        note: str("One factual sentence naming the changed task limit and the missed check-ins that caused it. No slogans."),
         minutesCap: num("Sustainable max minutes after the temporary restart (10-20)"),
         slipDays: num("Extra days to add to the projected finish (0-7)"),
         rewrites: arr(
@@ -270,7 +270,7 @@ export const shrinkWeek = internalAction({
         ),
       }),
       `They missed two tasks in a row on "${goal.smart?.statement ?? goal.title}" (current rung: ${rung?.title ?? "-"}, previous cap ${goal.minutesCap ?? 30} min/task).
-Life happened. Shrink next week so it is easy to restart, and explain kindly. Rewrites must stay at or below ${route.summary.minutesCap} minutes during the temporary restart. Separately choose a sustainable minutesCap of 10-20 for after the restart; do not lock the temporary ceiling in forever. Do not mention scores or percentages.
+Reduce next week’s task limits after the missed check-ins. Explain the changed limit factually. Rewrites must stay at or below ${route.summary.minutesCap} minutes during the temporary restart. Separately choose a sustainable minutesCap of 10-20 for after the restart; do not lock the temporary ceiling in forever. Do not mention scores or percentages.
 Open tasks: ${open.map((t) => `"${t.title}" (${t.minutes} min)`).join("; ") || "none"}.`,
     );
     const cap = Math.min(20, Math.max(5, Math.round(out.minutesCap)));
