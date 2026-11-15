@@ -169,7 +169,8 @@ export default defineSchema({
     ),
     synergies: v.array(v.object({ stopKey: v.string(), goalKeys: v.array(v.string()), reason: v.string() })),
     merges: v.array(v.object({ stopKey: v.string(), dropped: v.string(), goalKeys: v.array(v.string()) })),
-  }).index("by_device", ["deviceId"]),
+  }).index("by_device", ["deviceId"])
+    .index("by_device_and_activatedAt", ["deviceId", "activatedAt"]),
 
   ramps: defineTable({
     deviceId: v.string(),

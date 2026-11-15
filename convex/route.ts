@@ -53,13 +53,24 @@ export async function routeSchedule(ctx: QueryCtx, route: Doc<"routes">, today: 
   });
 }
 
+async function activeRoute(ctx: QueryCtx, deviceId: string) {
+  const route = await ctx.db.query("routes").withIndex("by_device_and_activatedAt", q => q.eq("deviceId", deviceId)).order("desc").first();
+  return route?.activatedAt !== undefined ? route : null;
+}
+
 export const current = query({
   args: { deviceId: v.string(), today: v.string() },
-  returns: v.union(v.null(), v.object({ route: routeDoc, plan: scheduleValidator })),
+  returns: v.union(v.null(), v.object({ route: routeDoc, plan: scheduleValidator, draft: v.optional(routeDoc) })),
   handler: async (ctx, { deviceId, today }) => {
     validDate(today);
-    const route = await ctx.db.query("routes").withIndex("by_device", (q) => q.eq("deviceId", deviceId)).order("desc").first();
-    return route ? { route, plan: await routeSchedule(ctx, route, today) } : null;
+    const [latest, active] = await Promise.all([
+      ctx.db.query("routes").withIndex("by_device", q => q.eq("deviceId", deviceId)).order("desc").first(),
+      activeRoute(ctx, deviceId),
+    ]);
+    const route = active ?? latest;
+    return route ? { route, plan: await routeSchedule(ctx, route, today),
+      ...(latest && latest._id !== route._id && latest.activatedAt === undefined ? { draft: latest } : {}),
+    } : null;
   },
 });
 
@@ -78,8 +89,7 @@ export const taskBudget = internalQuery({
   returns: v.union(v.null(), v.number()),
   handler: async (ctx, { deviceId, today, forDate }) => {
     validDate(today); validDate(forDate);
-    const routes = await ctx.db.query("routes").withIndex("by_device", (q) => q.eq("deviceId", deviceId)).order("desc").take(100);
-    const route = routes.find((r) => r.activatedAt);
+    const route = await activeRoute(ctx, deviceId);
     if (!route) return null;
     const plan = await routeSchedule(ctx, route, today);
     const tasks = await ctx.db.query("tasks").withIndex("by_device_and_forDate", (q) => q.eq("deviceId", deviceId).eq("forDate", forDate)).take(20);
@@ -287,8 +297,7 @@ export async function syncRoute(ctx: MutationCtx, routeId: Id<"routes">, today: 
   validDate(today);
   const route = await ctx.db.get("routes", routeId);
   if (!route?.activatedAt) return;
-  const routes = await ctx.db.query("routes").withIndex("by_device", (q) => q.eq("deviceId", route.deviceId)).order("desc").take(100);
-  if (routes.find((r) => r.activatedAt)?._id !== routeId) throw new Error("A newer route is in use. Open your current route instead.");
+  if ((await activeRoute(ctx, route.deviceId))?._id !== routeId) throw new Error("A newer route is in use. Open your current route instead.");
   const plan = await routeSchedule(ctx, route, today);
   const completed = await routeProgress(ctx, route);
   for (const g of route.goals) {

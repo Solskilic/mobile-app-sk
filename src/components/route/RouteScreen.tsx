@@ -1,4 +1,4 @@
-import { useMutation, useQuery } from 'convex/react';
+import { useMutation, usePaginatedQuery, useQuery } from 'convex/react';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
 import { Pressable, TextInput, View } from 'react-native';
@@ -20,10 +20,7 @@ export default function RouteScreen() {
   const { routeId } = useLocalSearchParams<{ routeId?: string }>();
   const today = useToday();
   const theme = useTheme();
-  const current = useQuery(
-    api.route.current,
-    routeId ? 'skip' : { deviceId: DEVICE_ID, today },
-  );
+  const current = useQuery(api.route.current, { deviceId: DEVICE_ID, today });
   const selected = useQuery(
     api.route.get,
     routeId ? { routeId: routeId as Id<'routes'>, today } : 'skip',
@@ -38,6 +35,12 @@ export default function RouteScreen() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [season, setSeason] = useState<'now' | 'next' | 'later'>('now');
+  const [history, setHistory] = useState(false);
+  const saved = usePaginatedQuery(
+    api.goals.history,
+    history ? { deviceId: DEVICE_ID } : 'skip',
+    { initialNumItems: 20 },
+  );
   const run = async (fn: () => Promise<unknown>) => {
     setBusy(true);
     setError(null);
@@ -64,6 +67,27 @@ export default function RouteScreen() {
         Your goals
       </T>
       {!data ? <Thinking label="Loading goals" /> : null}
+      {route &&
+      current?.route.activatedAt &&
+      route._id !== current.route._id ? (
+        <Button
+          kind="quiet"
+          label="Back to active route"
+          onPress={() => router.replace('/')}
+        />
+      ) : null}
+      {current?.draft && route?._id !== current.draft._id ? (
+        <Button
+          kind="quiet"
+          label="Open saved draft"
+          onPress={() =>
+            router.push({
+              pathname: '/goals/route',
+              params: { routeId: current.draft!._id },
+            })
+          }
+        />
+      ) : null}
       {route?.sample ? (
         <Card soft>
           <T size={13} weight="600">
@@ -372,6 +396,48 @@ export default function RouteScreen() {
             </Card>
           ) : null}
         </>
+      ) : null}
+      <Button
+        kind="ghost"
+        label={history ? 'Close saved goals' : 'Saved goals'}
+        onPress={() => setHistory(!history)}
+      />
+      {history ? (
+        <Card>
+          <T size={22} weight="600">
+            Saved goals
+          </T>
+          {saved.status === 'LoadingFirstPage' ? (
+            <Thinking label="Loading saved goals" />
+          ) : null}
+          {saved.results.map((goal) => (
+            <View key={goal._id} style={{ gap: 4 }}>
+              <T size={12} tone="textSecondary">
+                {goal.status === 'done'
+                  ? 'Completed'
+                  : goal.status === 'paused'
+                    ? 'Paused'
+                    : goal.status}
+              </T>
+              <Button
+                kind="quiet"
+                label={goal.title}
+                onPress={() => router.push(`/goals/${goal._id}`)}
+              />
+            </View>
+          ))}
+          {saved.status === 'Exhausted' && !saved.results.length ? (
+            <T>No saved goals.</T>
+          ) : null}
+          {saved.status === 'CanLoadMore' || saved.status === 'LoadingMore' ? (
+            <Button
+              kind="ghost"
+              label="More saved goals"
+              busy={saved.status === 'LoadingMore'}
+              onPress={() => saved.loadMore(20)}
+            />
+          ) : null}
+        </Card>
       ) : null}
       <Button
         kind="ghost"

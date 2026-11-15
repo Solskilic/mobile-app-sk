@@ -1,4 +1,5 @@
 import { v } from "convex/values";
+import { paginationOptsValidator, paginationResultValidator } from "convex/server";
 import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import {
@@ -9,7 +10,7 @@ import {
   type MutationCtx,
   type QueryCtx,
 } from "./_generated/server";
-import { resourceValidator, smartValidator, verdictValidator } from "./schema";
+import { goalStatus, resourceValidator, smartValidator, verdictValidator } from "./schema";
 import { climbRouteGoal, routeGoalReady } from "./route";
 import { readRunEvidence } from './runLog';
 
@@ -230,6 +231,15 @@ export const climb = mutation({
       at: now,
     });
     return { kind: "rung" as const, identity: rung.identity, next: next.title };
+  },
+});
+
+export const history = query({
+  args: { deviceId: v.string(), paginationOpts: paginationOptsValidator },
+  returns: paginationResultValidator(v.object({ _id: v.id("goals"), title: v.string(), status: goalStatus })),
+  handler: async (ctx, { deviceId, paginationOpts }) => {
+    const result = await ctx.db.query("goals").withIndex("by_device", q => q.eq("deviceId", deviceId)).order("desc").paginate(paginationOpts);
+    return { ...result, page: result.page.map(({ _id, title, status }) => ({ _id, title, status })) };
   },
 });
 
