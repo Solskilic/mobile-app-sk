@@ -1,25 +1,10 @@
 import { ConvexProvider, ConvexReactClient } from 'convex/react';
-import { DarkTheme, DefaultTheme, ThemeProvider } from 'expo-router';
-import * as SplashScreen from 'expo-splash-screen';
-import { useColorScheme } from 'react-native';
+import { Stack } from 'expo-router';
+import { StatusBar } from 'expo-status-bar';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 
-import { AnimatedSplashOverlay } from '@/components/animated-icon';
-import AppTabs from '@/components/app-tabs';
+const convex = new ConvexReactClient(process.env.EXPO_PUBLIC_CONVEX_URL ?? 'https://judicious-crane-17.convex.cloud', { unsavedChangesWarning: false });
 
-SplashScreen.preventAutoHideAsync();
-
-const convex = new ConvexReactClient(process.env.EXPO_PUBLIC_CONVEX_URL!, {
-  unsavedChangesWarning: false,
-});
-
-export default function TabLayout() {
-  const colorScheme = useColorScheme();
-  return (
-    <ConvexProvider client={convex}>
-      <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-        <AnimatedSplashOverlay />
-        <AppTabs />
-      </ThemeProvider>
-    </ConvexProvider>
-  );
+export default function Layout() {
+  return <SafeAreaProvider><ConvexProvider client={convex}><StatusBar style="dark" /><Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: '#F8F4E9' }, animation: 'none' }} /></ConvexProvider></SafeAreaProvider>;
 }

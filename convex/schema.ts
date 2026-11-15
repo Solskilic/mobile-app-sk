@@ -1,6 +1,7 @@
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 import { researchFields } from "./researchTypes";
+import { labFields } from './careerTypes';
 
 export const goalStatus = v.union(
   v.literal("clarifying"),
@@ -34,6 +35,7 @@ export const resourceValidator = v.object({
 });
 
 export default defineSchema({
+  careerLabs: defineTable(labFields).index('by_key', ['key']),
   goals: defineTable({
     deviceId: v.string(),
     text: v.string(),
