@@ -110,7 +110,7 @@ export default function GoalScreen() {
           {goal.status === 'active' && current ? (
             <Button
               label={`I've reached: ${current.title}`}
-              onPress={async () => setWin(await climb({ goalId }))}
+              onPress={async () => setWin(await climb({ goalId, today: localDate() }))}
             />
           ) : null}
         </Card>

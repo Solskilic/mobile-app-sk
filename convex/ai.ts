@@ -3,8 +3,9 @@ import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import { action, internalAction, type ActionCtx } from "./_generated/server";
 import { arr, askJson, num, obj, oneOf, str } from "./openai";
+import { addDays } from "./routeEngine";
 
-const today = () => new Date().toISOString().slice(0, 10);
+const utcToday = () => new Date().toISOString().slice(0, 10);
 const message = (e: unknown) => (e instanceof Error ? e.message : String(e)).slice(0, 300);
 
 export const clarify = internalAction({
@@ -53,6 +54,7 @@ export const plan = internalAction({
   args: { goalId: v.id("goals"), tomorrow: v.string() },
   returns: v.null(),
   handler: async (ctx, { goalId, tomorrow }) => {
+    const today = addDays(tomorrow, -1);
     const goal = await ctx.runQuery(internal.goals.forAi, { goalId });
     if (!goal) return null;
     const answers = goal.questions.map((q) => `- ${q.question} -> ${q.answer}`).join("\n");
@@ -86,7 +88,7 @@ export const plan = internalAction({
             "3 to 5 rungs, small to big. Career/academic pivots or fuzzy goals start with an 'explore' rung.",
           ),
         }),
-        `Today is ${today()}. Goal: "${goal.text}".
+        `Today is ${today}. Goal: "${goal.text}".
 Their answers:
 ${answers}
 
@@ -107,26 +109,26 @@ Rewrite the goal as SMART, give an honest realism verdict (do not flatter: if th
       await ctx.runMutation(internal.goals.setFailed, { goalId, error: message(e) });
       return null;
     }
-    await generateTracked(ctx, goal.deviceId, tomorrow);
+    await generateTracked(ctx, goal.deviceId, tomorrow, today);
     return null;
   },
 });
 
-async function generateTracked(ctx: ActionCtx, deviceId: string, forDate: string) {
+async function generateTracked(ctx: ActionCtx, deviceId: string, forDate: string, today = utcToday()) {
   await ctx.runMutation(internal.tasks.setPlanner, { deviceId, running: true });
   try {
-    await generate(ctx, deviceId, forDate);
+    await generate(ctx, deviceId, forDate, today);
     await ctx.runMutation(internal.tasks.setPlanner, { deviceId, running: false });
   } catch (e) {
     await ctx.runMutation(internal.tasks.setPlanner, { deviceId, running: false, error: message(e) });
   }
 }
 
-async function generate(ctx: ActionCtx, deviceId: string, forDate: string) {
+async function generate(ctx: ActionCtx, deviceId: string, forDate: string, today: string) {
   const goals = await ctx.runQuery(internal.goals.liveForAi, { deviceId });
   if (goals.length === 0) return;
-  const route = await ctx.runMutation(internal.routeAdherence.prepare, { deviceId, today: today(), forDate });
-  const budget = await ctx.runQuery(internal.route.taskBudget, { deviceId, today: today(), forDate });
+  const route = await ctx.runMutation(internal.routeAdherence.prepare, { deviceId, today, forDate });
+  const budget = await ctx.runQuery(internal.route.taskBudget, { deviceId, today, forDate });
   const count = budget === null ? 3 : Math.min(3, Math.floor(budget / 5));
   if (count === 0) return;
   const perTask = budget === null ? 30 : Math.floor(budget / count);
@@ -173,10 +175,10 @@ Route guidance: ${route.summary.explanation} Never exceed ${route.summary.minute
 }
 
 export const generateThree = internalAction({
-  args: { deviceId: v.string(), forDate: v.string() },
+  args: { deviceId: v.string(), forDate: v.string(), today: v.optional(v.string()) },
   returns: v.null(),
-  handler: async (ctx, { deviceId, forDate }) => {
-    await generateTracked(ctx, deviceId, forDate);
+  handler: async (ctx, { deviceId, forDate, today }) => {
+    await generateTracked(ctx, deviceId, forDate, today);
     return null;
   },
 });
@@ -188,12 +190,12 @@ const oneTask = obj({
 });
 
 export const swap = action({
-  args: { taskId: v.id("tasks") },
+  args: { taskId: v.id("tasks"), today: v.optional(v.string()) },
   returns: v.null(),
-  handler: async (ctx, { taskId }) => {
+  handler: async (ctx, { taskId, today = utcToday() }) => {
     const task = await ctx.runQuery(internal.tasks.forAi, { taskId });
     if (!task || task.status !== "open") return null;
-    const route = await ctx.runMutation(internal.routeAdherence.prepare, { deviceId: task.deviceId, today: today(), forDate: task.forDate });
+    const route = await ctx.runMutation(internal.routeAdherence.prepare, { deviceId: task.deviceId, today, forDate: task.forDate });
     const cap = Math.min(task.minutes, task.minutesCap, route.summary.minutesCap);
     const out = await askJson<{ title: string; why: string; minutes: number }>(
       "swap",
@@ -214,12 +216,12 @@ Give one different task of similar size (max ${cap} minutes) that still climbs t
 });
 
 export const shrink = action({
-  args: { taskId: v.id("tasks"), minutes: v.number() },
+  args: { taskId: v.id("tasks"), minutes: v.number(), today: v.optional(v.string()) },
   returns: v.null(),
-  handler: async (ctx, { taskId, minutes }) => {
+  handler: async (ctx, { taskId, minutes, today = utcToday() }) => {
     const task = await ctx.runQuery(internal.tasks.forAi, { taskId });
     if (!task || task.status !== "open") return null;
-    const route = await ctx.runMutation(internal.routeAdherence.prepare, { deviceId: task.deviceId, today: today(), forDate: task.forDate });
+    const route = await ctx.runMutation(internal.routeAdherence.prepare, { deviceId: task.deviceId, today, forDate: task.forDate });
     const cap = Math.min(minutes, task.minutes, task.minutesCap, route.summary.minutesCap);
     const out = await askJson<{ title: string; why: string; minutes: number }>(
       "shrink",
@@ -239,13 +241,13 @@ Shrink this task to a ${cap}-minute version that still counts: "${task.title}" (
 });
 
 export const shrinkWeek = internalAction({
-  args: { goalId: v.id("goals") },
+  args: { goalId: v.id("goals"), today: v.optional(v.string()) },
   returns: v.null(),
-  handler: async (ctx, { goalId }) => {
+  handler: async (ctx, { goalId, today = utcToday() }) => {
     const goal = await ctx.runQuery(internal.goals.forAi, { goalId });
     if (!goal) return null;
     const open = await ctx.runQuery(internal.tasks.openForGoal, { goalId });
-    const date = today();
+    const date = today;
     const forDate = open.map((t) => t.forDate).filter((d) => d >= date).sort()[0] ?? date;
     const route = await ctx.runMutation(internal.routeAdherence.prepare, { deviceId: goal.deviceId, today: date, forDate });
     const rung = goal.rungs[goal.currentRung];

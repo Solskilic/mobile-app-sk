@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { test } from "node:test";
+import { test } from "vitest";
 import { acyclic, cosine, schedule } from "../convex/routeEngine.ts";
 import { DEMO_GOALS, DEMO_STOPS } from "../convex/routeSample.ts";
 

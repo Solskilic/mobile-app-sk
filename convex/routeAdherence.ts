@@ -66,7 +66,7 @@ export function buildAdherenceContext(tasks: TaskOutcome[], latestRamp: Ramp | n
       ? "A few days did not go to plan, so the next three days build back gently."
       : "It has been a little while, so the next three days ease you back in.",
   } : null;
-  const ramp = newRamp ?? latestRamp;
+  const ramp = newRamp ?? (latestRamp ? { startDate: latestRamp.startDate, endDate: latestRamp.endDate, reason: latestRamp.reason } : null);
   const rampDay = ramp && forDate >= ramp.startDate && forDate <= ramp.endDate
     ? daysBetween(ramp.startDate, forDate) + 1 : null;
   const weakDay = model.weakDays.includes(weekdayOf(forDate));

@@ -30,7 +30,7 @@ async function embed(texts: string[]): Promise<number[][]> {
 }
 
 type Split = {
-  goals: { title: string; summary: string; weeklyHours: number }[];
+  goals: { title: string; summary: string; weeklyHours: number; horizon?: { kind: "flexible" | "byDate" | "recurring" | "exploration"; date: string; detail: string } }[];
   prerequisites: { goal: number; after: number; why: string }[];
 };
 type Step = {
@@ -90,7 +90,7 @@ export const build = internalAction({
     if (!route || route.status !== "building") return null;
     const dedication = route.dedication as Dedication;
     const hours = HOURS_PER_WEEK[dedication];
-    const timeline = route.timelineWeeks ? `They'd like to be done in about ${route.timelineWeeks} weeks.` : "No deadline given.";
+    const timeline = route.timelineWeeks ? `Optional overall check-in after ${route.timelineWeeks} weeks. This is not a deadline for each goal.` : "No global deadline.";
     const stage = (text: string) => ctx.runMutation(internal.route.setStage, { routeId, stage: text });
     try {
       await stage("Reading your list");
@@ -102,6 +102,11 @@ export const build = internalAction({
               title: str("Short goal title, max 5 words, in their words"),
               summary: str("One sentence: what success looks like for them"),
               weeklyHours: num("Hours per week this goal needs for steady progress, given their dedication"),
+              horizon: obj({
+                kind: { type: "string", enum: ["flexible", "byDate", "recurring", "exploration"] },
+                date: str("YYYY-MM-DD only if the person supplied an explicit by-date deadline; otherwise empty"),
+                detail: str("Their timing preference in plain words; do not invent a deadline"),
+              }),
             }),
             `1 to ${MAX_GOALS} goals, in the order they wrote them`,
           ),
@@ -117,6 +122,8 @@ export const build = internalAction({
         `A person wrote everything they want to change in their life:
 """${route.input}"""
 Dedication: ${DEDICATION_LABEL[dedication]} (about ${hours} hours a week in total across everything). ${timeline}
+Today: ${route.startDate}. Per-goal timing supplied separately: ${JSON.stringify(route.goalHorizons ?? [])}.
+Keep capacity separate from each goal's horizon. Flexible goals have no deadline; recurring goals continue; exploration is an open inquiry. Preserve explicit per-goal dates, never invent dates for untimed goals. A date must never compress effort or body/calendar adaptation.
 
 Split this into distinct goals (merge items that are clearly the same goal, keep vague ones vague but concrete enough to act on). Group the list into at most ${MAX_GOALS} goal families without discarding any aspiration; include every original idea in a summary. Preserve their stated priority order.`,
       );
@@ -125,6 +132,11 @@ Split this into distinct goals (merge items that are clearly the same goal, keep
         title: g.title,
         summary: g.summary,
         weeklyHours: Math.min(hours, Math.max(1, Math.round(g.weeklyHours * 2) / 2)),
+        horizon: g.horizon ? {
+          kind: g.horizon.kind === "byDate" && !/^\d{4}-\d{2}-\d{2}$/.test(g.horizon.date) ? "flexible" as const : g.horizon.kind,
+          ...(g.horizon.kind === "byDate" && /^\d{4}-\d{2}-\d{2}$/.test(g.horizon.date) ? { date: g.horizon.date } : {}),
+          ...(g.horizon.detail ? { detail: g.horizon.detail.slice(0, 500) } : {}),
+        } : { kind: "flexible" as const },
         after: [] as string[],
         afterWhy: undefined as string | undefined,
       }));
@@ -147,7 +159,7 @@ Split this into distinct goals (merge items that are clearly the same goal, keep
             "decompose_goal",
             obj({ steps: arr(stepSchema, "3 to 6 stops, from first step to finish line") }),
             `Goal: ${g.title}. ${g.summary}
-They can give this goal about ${g.weeklyHours} hours a week. ${timeline}
+They can give this goal about ${g.weeklyHours} hours a week. Its horizon: ${JSON.stringify(g.horizon)}. Do not shorten effort to fit a deadline. Recurring/exploration goals get a bounded first chapter, not a claim that the activity is permanently finished.
 Break it into 3-6 milestone stops along a route, small to big. Fuzzy or career goals start with an "explore" stop. Use dependsOn for real prerequisites only; stops that can happen in any order should not depend on each other.`,
           ),
         ),
@@ -213,8 +225,16 @@ ${mergeCandidates.map((p, i) => `Pair ${i + 1}: "${p.a.title}" (${p.a.milestone}
         merges.push({ stopKey: p.a.key, dropped: p.b.title, goalKeys: p.a.goalKeys });
       }
       stops = stops.filter((s) => !gone.has(s.key));
+      const root = (key: string) => {
+        while (gone.has(key)) key = gone.get(key)!;
+        return key;
+      };
       for (const s of stops) {
-        s.dependsOn = [...new Set(s.dependsOn.map((d) => gone.get(d) ?? d))].filter((d) => d !== s.key);
+        s.dependsOn = [...new Set(s.dependsOn.map(root))].filter((d) => d !== s.key);
+      }
+      for (const m of merges) {
+        m.stopKey = root(m.stopKey);
+        m.goalKeys = stops.find((s) => s.key === m.stopKey)!.goalKeys;
       }
 
       const goalPairs: { a: (typeof goals)[number]; b: (typeof goals)[number]; sim: number }[] = [];
@@ -240,7 +260,7 @@ ${mergeCandidates.map((p, i) => `Pair ${i + 1}: "${p.a.title}" (${p.a.milestone}
       const candidates = goalPairs.filter((p) => p.sim >= CANDIDATE_AT).slice(0, 4);
       if (goals.length >= 2 && candidates.length === 0 && goalPairs[0]) candidates.push(goalPairs[0]);
 
-      const synergies: { stopKey: string; goalKeys: string[]; reason: string }[] = merges.map((m) => ({
+      const synergies: { stopKey: string; goalKeys: string[]; reason: string }[] = [...new Map(merges.map((m) => [m.stopKey, m])).values()].map((m) => ({
         stopKey: m.stopKey,
         goalKeys: m.goalKeys,
         reason: "",
@@ -293,15 +313,6 @@ ${listSteps(c.b.key)}`,
           if (Math.min(fitA, fitB) < BRIDGE_FIT_AT) return;
           const mineA = stops.filter((s) => s.goalKeys.includes(c.a.key));
           const mineB = stops.filter((s) => s.goalKeys.includes(c.b.key));
-          const twin = [...mineA, ...mineB]
-            .filter((s) => stopVec.has(s.key))
-            .map((s) => ({ s, sim: cosine(vec, stopVec.get(s.key)!) }))
-            .sort((x, y) => y.sim - x.sim)[0];
-          if (twin && twin.sim >= MERGE_AT) {
-            twin.s.goalKeys = [...new Set([...twin.s.goalKeys, c.a.key, c.b.key])];
-            synergies.push({ stopKey: twin.s.key, goalKeys: [c.a.key, c.b.key], reason: b.reason });
-            return;
-          }
           const key = `x${synergies.length + 1}`;
           const afterA = mineA[b.afterStepA - 1]?.key;
           const afterB = mineB[b.afterStepB - 1]?.key;

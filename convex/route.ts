@@ -3,7 +3,7 @@ import { docValidator } from "convex/server";
 import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import { internalMutation, internalQuery, mutation, query, type QueryCtx, type MutationCtx } from "./_generated/server";
-import schema from "./schema";
+import schema, { horizonValidator } from "./schema";
 import { schedule, adherence, HOURS_PER_WEEK, addDays, type Schedule } from "./routeEngine";
 
 const dedication = v.union(v.literal("casual"), v.literal("steady"), v.literal("allIn"));
@@ -89,7 +89,10 @@ export const taskBudget = internalQuery({
 });
 
 export const create = mutation({
-  args: { deviceId: v.string(), input: v.string(), dedication, timelineWeeks: v.optional(v.number()), today: v.string() },
+  args: {
+    deviceId: v.string(), input: v.string(), dedication, timelineWeeks: v.optional(v.number()), today: v.string(),
+    goalHorizons: v.optional(v.array(v.object({ goal: v.string(), horizon: horizonValidator }))),
+  },
   returns: v.id("routes"),
   handler: async (ctx, args) => {
     validDate(args.today);
@@ -97,14 +100,40 @@ export const create = mutation({
     if (!input || input.length > 6000) throw new Error("Write a goal list of up to 6,000 characters");
     if (args.timelineWeeks !== undefined && (!Number.isInteger(args.timelineWeeks) || args.timelineWeeks < 1 || args.timelineWeeks > 520))
       throw new Error("Choose a timeline between 1 and 520 weeks");
+    if ((args.goalHorizons?.length ?? 0) > 20) throw new Error("Add horizons for up to 20 goals");
+    for (const hint of args.goalHorizons ?? []) validateHorizon(hint.horizon);
     const recent = await ctx.db.query("routes").withIndex("by_device", (q) => q.eq("deviceId", args.deviceId)).order("desc").first();
     if (recent?.status === "building" && recent._creationTime > Date.now() - 5 * 60_000) return recent._id;
     const routeId = await ctx.db.insert("routes", {
       deviceId: args.deviceId, input, dedication: args.dedication, timelineWeeks: args.timelineWeeks,
+      goalHorizons: args.goalHorizons,
       startDate: args.today, status: "building", stage: "Reading your list", goals: [], stops: [], synergies: [], merges: [],
     });
     await ctx.scheduler.runAfter(0, internal.routeAi.build, { routeId });
     return routeId;
+  },
+});
+
+function validateHorizon(horizon: { kind: string; date?: string; detail?: string }) {
+  if (horizon.kind === "byDate") {
+    if (!horizon.date) throw new Error("A by-date horizon needs a calendar date");
+    validDate(horizon.date);
+  } else if (horizon.date) throw new Error("Only a by-date horizon has a deadline");
+  if ((horizon.detail?.length ?? 0) > 500) throw new Error("Keep horizon details under 500 characters");
+}
+
+export const setGoalHorizon = mutation({
+  args: { routeId: v.id("routes"), goalKey: v.string(), horizon: horizonValidator },
+  returns: v.null(),
+  handler: async (ctx, { routeId, goalKey, horizon }) => {
+    validateHorizon(horizon);
+    const route = await ctx.db.get("routes", routeId);
+    if (!route || route.status !== "ready") throw new Error("Wait until the route is ready");
+    if (!route.goals.some((g) => g.key === goalKey)) throw new Error("Goal not found on this route");
+    await ctx.db.patch("routes", routeId, {
+      goals: route.goals.map((g) => g.key === goalKey ? { ...g, horizon } : g),
+    });
+    return null;
   },
 });
 
@@ -157,6 +186,7 @@ export const saveGraph = internalMutation({
     const route = await ctx.db.get("routes", routeId);
     if (!route || route.status !== "building") return null;
     if (!goals.length || goals.length > 6 || !stops.length || stops.length > 48) throw new Error("Route graph exceeded its bounds");
+    for (const goal of goals) if (goal.horizon) validateHorizon(goal.horizon);
     if (new Set(goals.map((g) => g.key)).size !== goals.length || new Set(stops.map((s) => s.key)).size !== stops.length)
       throw new Error("Route graph contained duplicate keys");
     await ctx.db.patch("routes", routeId, { goals, stops, synergies, merges, status: "ready", stage: undefined });
@@ -164,9 +194,9 @@ export const saveGraph = internalMutation({
   },
 });
 
-async function removeOpen(ctx: MutationCtx, goalId: Id<"goals">) {
+async function removeOpen(ctx: MutationCtx, goalId: Id<"goals">, today: string) {
   const tasks = await ctx.db.query("tasks").withIndex("by_goal_and_status", (q) => q.eq("goalId", goalId).eq("status", "open")).take(100);
-  for (const task of tasks) await ctx.db.delete("tasks", task._id);
+  for (const task of tasks) if (task.forDate >= today) await ctx.db.delete("tasks", task._id);
 }
 
 export const activate = mutation({
@@ -175,12 +205,14 @@ export const activate = mutation({
     validDate(today);
     const route = await ctx.db.get("routes", routeId);
     if (!route || route.status !== "ready" || route.activatedAt) return null;
+    const latest = await ctx.db.query("routes").withIndex("by_device", (q) => q.eq("deviceId", route.deviceId)).order("desc").first();
+    if (latest?._id !== routeId) throw new Error("Open the newest route draft before activating");
     const plan = await routeSchedule(ctx, route, today);
     const existing = await ctx.db.query("goals").withIndex("by_device", (q) => q.eq("deviceId", route.deviceId)).take(100);
     for (const g of existing) {
       if (g.status !== "done" && g.status !== "paused") {
         await ctx.db.patch("goals", g._id, { status: "paused" });
-        await removeOpen(ctx, g._id);
+        await removeOpen(ctx, g._id, today);
       }
     }
     const goals = [];
@@ -206,35 +238,84 @@ export const activate = mutation({
       goals.push({ ...g, goalId });
     }
     await ctx.db.patch("routes", routeId, { goals, activatedAt: Date.now(), startDate: today });
-    await ctx.scheduler.runAfter(0, internal.ai.generateThree, { deviceId: route.deviceId, forDate: addDays(today, 1) });
+    await ctx.scheduler.runAfter(0, internal.ai.generateThree, { deviceId: route.deviceId, forDate: addDays(today, 1), today });
     return null;
   },
 });
 
+export async function routeGoalReady(ctx: QueryCtx, goal: Doc<"goals">) {
+  if (!goal.routeId) return true;
+  const route = await ctx.db.get("routes", goal.routeId);
+  if (!route) return false;
+  const rungs = await ctx.db.query("rungs").withIndex("by_goal_and_index", (q) => q.eq("goalId", goal._id)).take(12);
+  const rung = rungs.find((r) => r.index === goal.currentRung);
+  if (!rung?.routeStopKey) return false;
+  const stop = route.stops.find((s) => s.key === rung.routeStopKey);
+  if (!stop) return false;
+  const completed = await routeProgress(ctx, route);
+  const plan = schedule({
+    goals: route.goals, stops: route.stops.map((s) => ({ ...s, done: completed.has(s.key) })),
+    hoursPerWeek: HOURS_PER_WEEK[route.dedication], pace: 1,
+  });
+  const hardPrerequisites = stop.goalKeys.flatMap((key) =>
+    (route.goals.find((g) => g.key === key)?.after ?? []).flatMap((before) =>
+      route.stops.filter((s) => s.goalKeys.includes(before) && !s.goalKeys.includes(key)).map((s) => s.key),
+    ),
+  );
+  return [...stop.dependsOn, ...hardPrerequisites].every((key) =>
+    completed.has(key) || plan.droppedEdges.some((edge) => edge.from === key && edge.to === stop.key),
+  );
+}
+
+export async function syncRoute(ctx: MutationCtx, routeId: Id<"routes">, today: string) {
+  validDate(today);
+  const route = await ctx.db.get("routes", routeId);
+  if (!route?.activatedAt) return;
+  const routes = await ctx.db.query("routes").withIndex("by_device", (q) => q.eq("deviceId", route.deviceId)).order("desc").take(100);
+  if (routes.find((r) => r.activatedAt)?._id !== routeId) throw new Error("A newer route is in use. Open your current route instead.");
+  const plan = await routeSchedule(ctx, route, today);
+  const completed = await routeProgress(ctx, route);
+  for (const g of route.goals) {
+    if (!g.goalId) continue;
+    const goal = await ctx.db.get("goals", g.goalId);
+    if (!goal) continue;
+    await removeOpen(ctx, goal._id, today);
+    const p = plan.goals.find((s) => s.key === g.key)!;
+    const allDone = route.stops.filter((s) => s.goalKeys.includes(g.key)).every((s) => completed.has(s.key));
+    const desired = allDone ? "done" : p.season === "now" && await routeGoalReady(ctx, goal) ? "active" : "paused";
+    if (desired === "done" && goal.status !== "done") {
+      await ctx.db.insert("checkins", { deviceId: route.deviceId, goalId: goal._id, kind: "goalDone", note: `You reached: ${g.title}`, at: Date.now() });
+    }
+    await ctx.db.patch("goals", goal._id, {
+      status: desired,
+      completedAt: desired === "done" ? goal.completedAt ?? Date.now() : undefined,
+      projectedFinish: Date.parse(today + "T12:00:00Z") + p.endWeek * 7 * DAY,
+    });
+  }
+  await ctx.scheduler.runAfter(0, internal.ai.generateThree, { deviceId: route.deviceId, forDate: addDays(today, 1), today });
+}
+
+export async function climbRouteGoal(ctx: MutationCtx, goal: Doc<"goals">, today: string) {
+  if (!goal.routeId || !(await routeGoalReady(ctx, goal))) return null;
+  const rungs = await ctx.db.query("rungs").withIndex("by_goal_and_index", (q) => q.eq("goalId", goal._id)).take(12);
+  const current = rungs.find((r) => r.index === goal.currentRung);
+  if (!current) return null;
+  await ctx.db.patch("rungs", current._id, { completedAt: Date.now() });
+  await ctx.db.patch("goals", goal._id, { currentRung: goal.currentRung + 1, missStreak: 0 });
+  await ctx.db.insert("checkins", { deviceId: goal.deviceId, goalId: goal._id, kind: "rungClimbed", note: current.identity, at: Date.now() });
+  await syncRoute(ctx, goal.routeId, today);
+  const updated = await ctx.db.get("goals", goal._id);
+  return {
+    kind: updated?.status === "done" ? "goal" as const : "rung" as const,
+    identity: current.identity,
+    next: rungs.find((r) => r.index === goal.currentRung + 1)?.title ?? null,
+  };
+}
+
 export const advance = mutation({
   args: { routeId: v.id("routes"), today: v.string() }, returns: v.null(),
   handler: async (ctx, { routeId, today }) => {
-    validDate(today);
-    const route = await ctx.db.get("routes", routeId);
-    if (!route?.activatedAt) return null;
-    const routes = await ctx.db.query("routes").withIndex("by_device", (q) => q.eq("deviceId", route.deviceId)).order("desc").take(100);
-    if (routes.find((r) => r.activatedAt)?._id !== routeId) throw new Error("A newer route is in use. Open your current route instead.");
-    const plan = await routeSchedule(ctx, route, today);
-    for (const g of route.goals) {
-      if (!g.goalId) continue;
-      const goal = await ctx.db.get("goals", g.goalId);
-      if (!goal || goal.status === "done") continue;
-      await removeOpen(ctx, goal._id);
-      const p = plan.goals.find((s) => s.key === g.key)!;
-      const desired = p.season === "now" ? "active" : p.season === "done" ? "done" : "paused";
-      if (goal.status !== desired) {
-        await ctx.db.patch("goals", goal._id, { status: desired });
-        if (desired !== "active") await removeOpen(ctx, goal._id);
-      }
-      const base = Date.parse(today + "T12:00:00Z");
-      await ctx.db.patch("goals", goal._id, { projectedFinish: base + p.endWeek * 7 * DAY });
-    }
-    await ctx.scheduler.runAfter(0, internal.ai.generateThree, { deviceId: route.deviceId, forDate: addDays(today, 1) });
+    await syncRoute(ctx, routeId, today);
     return null;
   },
 });

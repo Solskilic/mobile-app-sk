@@ -188,7 +188,7 @@ export function adherence(outcomes: Outcome[], today: string): Adherence {
   const overall = rate(resolved);
   const weekdayStrength = [0, 1, 2, 3, 4, 5, 6].map((d) => rate(resolved.filter((o) => dayIndex(o.forDate) === d)));
   const bySize = [0, 1, 2].map((s) => rate(resolved.filter((o) => sizeOf(o.minutes) === s), 3));
-  const minutesCap = bySize[2] >= 0.6 ? 30 : bySize[1] >= 0.6 ? 20 : 10;
+  const minutesCap = resolved.length < 3 ? 30 : bySize[2] >= 0.6 ? 30 : bySize[1] >= 0.6 ? 20 : 10;
 
   const days = [...new Set(resolved.map((o) => o.forDate))].sort().reverse();
   let missedDaysInRow = 0;
@@ -220,7 +220,8 @@ export function adherence(outcomes: Outcome[], today: string): Adherence {
     missedDaysInRow,
     idleDays,
     resolved: resolved.length,
-    shortBeatsLong: bySize[0] - bySize[2] >= 0.15,
+    shortBeatsLong: resolved.filter((o) => sizeOf(o.minutes) === 0).length >= 3 &&
+      resolved.filter((o) => sizeOf(o.minutes) === 2).length >= 2 && bySize[0] - bySize[2] >= 0.15,
     bestDays,
     weakDays,
   };

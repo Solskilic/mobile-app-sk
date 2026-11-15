@@ -32,7 +32,7 @@ export default function TodayScreen() {
   const pending = goals?.filter((g) => ['clarifying', 'planning', 'failed'].includes(g.status)) ?? [];
   const three = upcoming?.tasks ?? [];
   const isPlanning = !!planner?.running && three.length === 0;
-  const planTomorrow = () => planThree({ deviceId: DEVICE_ID, forDate: tomorrow });
+  const planTomorrow = () => planThree({ deviceId: DEVICE_ID, forDate: tomorrow, today });
   const stripTitle = active.some((g) => g.routeId)
     ? upcoming?.forDate === today ? "Today's steps" : "Tomorrow's steps"
     : upcoming?.forDate === today ? "Today's three" : "Tomorrow's three";
@@ -133,7 +133,7 @@ export default function TodayScreen() {
                 small
                 kind="ghost"
                 label="Life happened"
-                onPress={() => lifeHappened({ deviceId: DEVICE_ID, forDate: upcoming.forDate! })}
+                onPress={() => lifeHappened({ deviceId: DEVICE_ID, forDate: upcoming.forDate!, today })}
               />
             ) : null}
           </View>

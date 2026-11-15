@@ -32,6 +32,12 @@ export const resourceValidator = v.object({
   url: v.string(),
 });
 
+export const horizonValidator = v.object({
+  kind: v.union(v.literal("flexible"), v.literal("byDate"), v.literal("recurring"), v.literal("exploration")),
+  date: v.optional(v.string()),
+  detail: v.optional(v.string()),
+});
+
 export default defineSchema({
   goals: defineTable({
     deviceId: v.string(),
@@ -120,6 +126,7 @@ export default defineSchema({
     input: v.string(),
     dedication: v.union(v.literal("casual"), v.literal("steady"), v.literal("allIn")),
     timelineWeeks: v.optional(v.number()),
+    goalHorizons: v.optional(v.array(v.object({ goal: v.string(), horizon: horizonValidator }))),
     startDate: v.string(),
     status: v.union(v.literal("building"), v.literal("ready"), v.literal("failed")),
     stage: v.optional(v.string()),
@@ -135,6 +142,7 @@ export default defineSchema({
         after: v.array(v.string()),
         afterWhy: v.optional(v.string()),
         goalId: v.optional(v.id("goals")),
+        horizon: v.optional(horizonValidator),
       }),
     ),
     stops: v.array(

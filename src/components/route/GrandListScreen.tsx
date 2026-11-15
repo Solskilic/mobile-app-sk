@@ -45,7 +45,7 @@ export default function GrandListScreen() {
         placeholder="Run a marathon, change careers, draw again, make friends in Seattle…"
         placeholderTextColor={theme.textSecondary}
         style={{ minHeight: 150, color: theme.text, fontSize: 17, lineHeight: 25, textAlignVertical: "top" }} />
-      <T size={13} tone="textSecondary">Be abstract or specific. Related ideas become up to six goal families, with room for every aspiration.</T>
+      <T size={13} tone="textSecondary">Be abstract or specific. Add timing beside each goal if it matters: “marathon by October”, “read every week”, or “explore UX”. Related ideas become up to six goal families.</T>
     </Card>
     <Card>
       <T weight="700">How much room does this get?</T>
@@ -57,11 +57,11 @@ export default function GrandListScreen() {
       <T size={13} tone="textSecondary">Why we ask: your hours decide which goals travel together and which wait. Nothing gets squeezed to meet a deadline.</T>
     </Card>
     <Card>
-      <T weight="700">A timeline, if you have one</T>
+      <T weight="700">An optional shared check-in</T>
       <TextInput accessibilityLabel="Timeline in weeks" keyboardType="number-pad" value={weeks} onChangeText={setWeeks}
         placeholder="Number of weeks, or leave it open" placeholderTextColor={theme.textSecondary}
         style={{ color: theme.text, paddingVertical: 12, fontSize: 16 }} />
-      <T size={13} tone="textSecondary">This is a preference, not a promise. We’ll show when the route needs more room.</T>
+      <T size={13} tone="textSecondary">This is a point to revisit the whole route, not a deadline for every goal. Individual horizons stay separate from your hours.</T>
     </Card>
     {error ? <T>{error}</T> : null}
     <Button label="Map my route" busy={busy} disabled={!input.trim()} onPress={build} />

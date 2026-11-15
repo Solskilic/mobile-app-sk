@@ -85,6 +85,7 @@ export default function RouteScreen() {
         return <Card key={g.key}>
           <T size={21} weight="700">{g.title}</T>
           <T size={14} tone="textSecondary">{g.summary}</T>
+          {g.horizon ? <T size={13} tone="textSecondary">{g.horizon.kind === "byDate" ? `Date in mind: ${g.horizon.date}. The route will not compress to fit it.` : g.horizon.kind === "recurring" ? "An ongoing rhythm, not a finish line." : g.horizon.kind === "exploration" ? "An exploration with room to change direction." : "A flexible horizon."}{g.horizon.detail ? ` ${g.horizon.detail}` : ""}</T> : null}
           <T size={13} tone="accent">{p.startWeek === 0 ? "Starts with this season" : "Waits for room in your week"}</T>
           {stops.map((p, i) => {
             const s = route.stops.find((x) => x.key === p.key)!;
@@ -122,7 +123,7 @@ export default function RouteScreen() {
       <Card>
         <T weight="700">A working route, not a prediction</T>
         <T size={14} tone="textSecondary">Effort and duration are provisional planning assumptions, not researched evidence. Your weekly hours and check-ins change the order and pace. We won’t promise a finish date from an AI guess.</T>
-        {"timelineWeeks" in route && typeof route.timelineWeeks === "number" ? <T size={14}>{plan.totalWeeks > route.timelineWeeks ? "This draft needs more room than your preferred timeline. Keep the pace, or choose a smaller first version." : "Your preferred timeline leaves room in this draft. We’ll revisit it as we learn your pace."}</T> : null}
+        {route.timelineWeeks ? <T size={14}>Your shared check-in is a time to revisit the route. Each goal keeps its own horizon.</T> : null}
       </Card>
       {!isPreview ? <Card>
         <T size={14} tone="textSecondary">{route.activatedAt ? "Refresh your next leg after reaching a stop or changing your pace. Your completed work stays." : "Using this route pauses your other unfinished goals and replaces their open steps. Nothing you completed is lost."}</T>

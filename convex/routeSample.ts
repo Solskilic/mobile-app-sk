@@ -1,9 +1,9 @@
 export const DEMO_GOALS = [
-  { key: "run", title: "Run a marathon", summary: "Build from easy runs to a comfortable first marathon.", weeklyHours: 4, after: [] },
-  { key: "ux", title: "Become a UX designer", summary: "Explore the work, then build a portfolio for a career switch.", weeklyHours: 4, after: [] },
-  { key: "art", title: "Draw again", summary: "Make drawing a small, regular part of life again.", weeklyHours: 2, after: [] },
-  { key: "read", title: "Read more", summary: "Find room for books without turning them into homework.", weeklyHours: 1, after: [] },
-  { key: "friends", title: "Find friends in Seattle", summary: "Become a familiar face in a local community.", weeklyHours: 2, after: [] },
+  { key: "run", title: "Run a marathon", summary: "Build from easy runs to a comfortable first marathon.", weeklyHours: 4, after: [], horizon: { kind: "flexible" as const } },
+  { key: "ux", title: "Become a UX designer", summary: "Explore the work, then build a portfolio for a career switch.", weeklyHours: 4, after: [], horizon: { kind: "exploration" as const } },
+  { key: "art", title: "Draw again", summary: "Make drawing a small, regular part of life again.", weeklyHours: 2, after: [], horizon: { kind: "recurring" as const } },
+  { key: "read", title: "Read more", summary: "Find room for books without turning them into homework.", weeklyHours: 1, after: [], horizon: { kind: "recurring" as const } },
+  { key: "friends", title: "Find friends in Seattle", summary: "Become a familiar face in a local community.", weeklyHours: 2, after: [], horizon: { kind: "recurring" as const } },
 ];
 const stop = (key: string, goalKeys: string[], title: string, why: string, effortHours: number, minWeeks: number, dependsOn: string[] = [], kind: "explore" | "build" = "build", origin: "goal" | "bridge" = "goal") => ({
   key, goalKeys, title, why, effortHours, minWeeks, dependsOn, kind, origin,
