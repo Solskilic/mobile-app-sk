@@ -58,11 +58,10 @@ export function RunLog({ goalId }: { goalId: Id<'goals'> }) {
       </T>
       <RunDistanceGraphic runs={manual} />
       <T size={13} tone="textSecondary">
-        Manual entries · shared single-user demo, no account privacy.
+        Fictional manual entries · shared demo, no account privacy.
       </T>
       <T size={14} tone="textSecondary">
-        Record what you ran. A log never completes a task, milestone, or race
-        for you.
+        Enter a sample run. Logs never complete a task, milestone or race.
       </T>
       <T size={13}>Run date (YYYY-MM-DD, UTC)</T>
       <TextInput

@@ -25,7 +25,7 @@
     },
     "plugins": [
       "expo-router",
-      ["expo-image-picker", { "photosPermission": "Choose a photo to remember your progress in Route.", "cameraPermission": false, "microphonePermission": false }],
+      ["expo-image-picker", { "photosPermission": "Select a non-personal sample image for the shared Route demo.", "cameraPermission": false, "microphonePermission": false }],
       [
         "expo-splash-screen",
         {

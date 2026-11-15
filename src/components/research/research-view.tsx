@@ -139,12 +139,11 @@ export function ResearchView({
               : 'Research inputs'}
           </T>
           <T size={14} tone="textSecondary">
-            For a career or academic change, share your studies, experience and
-            tools. Add your weekly hours, dedication and budget if you know
-            them. Only share what you want used in this research.
+            Use fictional sample studies, experience, tools and location only.
+            This research is saved in the shared demo, not a private account.
           </T>
           <TextInput
-            accessibilityLabel="Your background"
+            accessibilityLabel="Fictional research background"
             placeholder="For example: Biology graduate, lab research, Excel and a little Python. New to design. Four hours a week, free options first."
             placeholderTextColor={theme.textSecondary}
             value={background ?? run?.background ?? ''}
@@ -154,8 +153,8 @@ export function ResearchView({
             style={[input, { minHeight: 100, textAlignVertical: 'top' }]}
           />
           <TextInput
-            accessibilityLabel="City or region"
-            placeholder="City or region (optional, for local classes)"
+            accessibilityLabel="Sample city or region"
+            placeholder="Sample city or region (optional)"
             placeholderTextColor={theme.textSecondary}
             value={location ?? run?.location ?? ''}
             onChangeText={setLocation}
@@ -167,8 +166,8 @@ export function ResearchView({
               result
                 ? 'Research again'
                 : run?.status === 'needsBackground'
-                  ? 'Use my background'
-                  : 'Find sources for my route'
+                  ? 'Use sample background'
+                  : 'Find sources for this route'
             }
             busy={busy}
             onPress={async () => {
@@ -205,7 +204,7 @@ export function ResearchView({
       ) : (
         <Button
           kind="quiet"
-          label="Update my background or search again"
+          label="Edit sample background or search again"
           onPress={() => setEditingProfile(true)}
         />
       )}

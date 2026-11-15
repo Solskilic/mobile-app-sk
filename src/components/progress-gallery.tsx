@@ -92,11 +92,12 @@ export function ProgressGallery({ goalId }: { goalId: Id<'goals'> }) {
         </T>
       </View>
       <T size={13} tone="textSecondary">
-        Personal gallery · no analysis or task completion.
+        Non-personal sample images only · shared demo, no analysis or
+        completion.
       </T>
       <Button
         kind="quiet"
-        label="Add a progress photo"
+        label="Add a demo photo"
         onPress={pick}
         disabled={busy}
       />
@@ -113,7 +114,7 @@ export function ProgressGallery({ goalId }: { goalId: Id<'goals'> }) {
           </T>
           <TextInput
             accessibilityLabel="Optional photo caption"
-            placeholder="Caption (optional)"
+            placeholder="Sample caption (optional)"
             placeholderTextColor={theme.textSecondary}
             value={caption}
             onChangeText={setCaption}
