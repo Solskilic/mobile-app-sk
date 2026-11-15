@@ -157,11 +157,11 @@ export function Thinking({ label }: { label: string }) {
 }
 
 type LadderRung = { _id: string; title: string; identity: string; weeks: number; kind: string; completedAt?: number };
-type LadderGoal = { currentRung: number; startedAt?: number; projectedFinish?: number; status: string };
+type LadderGoal = { currentRung: number; startedAt?: number; projectedFinish?: number; status: string; routeId?: string };
 
 export function Ladder({ goal, rungs, large }: { goal: LadderGoal; rungs: LadderRung[]; large?: boolean }) {
   const theme = useTheme();
-  const dates = rungDates(goal, rungs);
+  const dates = rungDates(goal.routeId ? { ...goal, projectedFinish: undefined } : goal, rungs);
   const max = rungs.length;
   return (
     <View style={styles.ladder}>

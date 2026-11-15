@@ -23,8 +23,8 @@ export function TaskCard({ task, today, past }: { task: TaskView; today: string;
   const run = async (kind: 'swap' | 'shrink') => {
     setBusy(kind);
     try {
-      if (kind === 'swap') await swap({ taskId: task._id });
-      else await shrink({ taskId: task._id, minutes: 10 });
+      if (kind === 'swap') await swap({ taskId: task._id, today });
+      else await shrink({ taskId: task._id, minutes: 10, today });
     } finally {
       setBusy(null);
     }
@@ -69,7 +69,7 @@ export function TaskCard({ task, today, past }: { task: TaskView; today: string;
           {task.minutes > 10 ? (
             <Button small kind="quiet" label="Make it 10 min" busy={busy === 'shrink'} disabled={!!busy} onPress={() => run('shrink')} />
           ) : null}
-          <Button small kind="ghost" label="Didn't happen" disabled={!!busy} onPress={() => miss({ taskId: task._id })} />
+          <Button small kind="ghost" label="Didn't happen" disabled={!!busy} onPress={() => miss({ taskId: task._id, today })} />
         </View>
       ) : null}
     </Card>

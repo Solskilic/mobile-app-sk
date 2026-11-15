@@ -83,7 +83,7 @@ export default function GoalScreen() {
           <Ladder goal={goal} rungs={goal.rungs} large />
           <View style={{ gap: 2 }}>
             {goal.estimateLabel ? <T weight="600">{goal.estimateLabel}</T> : null}
-            {goal.projectedFinish && goal.status !== 'done' ? (
+            {goal.projectedFinish && !goal.routeId && goal.status !== 'done' ? (
               <T tone="accent" weight="600">
                 At this pace: {formatDay(goal.projectedFinish)}
               </T>
@@ -110,7 +110,7 @@ export default function GoalScreen() {
           {goal.status === 'active' && current ? (
             <Button
               label={`I've reached: ${current.title}`}
-              onPress={async () => setWin(await climb({ goalId }))}
+              onPress={async () => setWin(await climb({ goalId, today: localDate() }))}
             />
           ) : null}
         </Card>
@@ -169,6 +169,7 @@ export default function GoalScreen() {
             label="Resume goal"
             onPress={async () => {
               const result = await resume({ goalId });
+              if (result === 'route') router.push({ pathname: '/goals/route', params: { routeId: goal.routeId } });
               setNotice(result === 'limit' ? 'You have 3 goals in motion. Pause one first.' : null);
             }}
           />

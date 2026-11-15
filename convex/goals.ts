@@ -10,6 +10,7 @@ import {
   type QueryCtx,
 } from "./_generated/server";
 import { resourceValidator, smartValidator, verdictValidator } from "./schema";
+import { climbRouteGoal, routeGoalReady } from "./route";
 
 export const MAX_ACTIVE = 3;
 export const DAY = 24 * 60 * 60 * 1000;
@@ -131,10 +132,11 @@ export const pause = mutation({
 
 export const resume = mutation({
   args: { goalId: v.id("goals") },
-  returns: v.union(v.literal("ok"), v.literal("limit")),
+  returns: v.union(v.literal("ok"), v.literal("limit"), v.literal("route")),
   handler: async (ctx, { goalId }) => {
     const goal = await ctx.db.get("goals", goalId);
     if (!goal || goal.status !== "paused") return "ok" as const;
+    if (goal.routeId) return "route" as const;
     const live = await liveGoals(ctx, goal.deviceId);
     if (live.length >= MAX_ACTIVE) return "limit" as const;
     await ctx.db.patch("goals", goalId, { status: "active" });
@@ -169,7 +171,7 @@ export const remove = mutation({
 });
 
 export const climb = mutation({
-  args: { goalId: v.id("goals") },
+  args: { goalId: v.id("goals"), today: v.optional(v.string()) },
   returns: v.union(
     v.null(),
     v.object({
@@ -178,9 +180,10 @@ export const climb = mutation({
       next: v.union(v.string(), v.null()),
     }),
   ),
-  handler: async (ctx, { goalId }) => {
+  handler: async (ctx, { goalId, today }) => {
     const goal = await ctx.db.get("goals", goalId);
     if (!goal || goal.status !== "active") return null;
+    if (goal.routeId) return await climbRouteGoal(ctx, goal, today ?? new Date().toISOString().slice(0, 10));
     const rungs = await rungsOf(ctx, goalId);
     const rung = rungs[goal.currentRung];
     if (!rung) return null;
@@ -210,7 +213,7 @@ export const climb = mutation({
       .take(50);
     for (const task of stale) await ctx.db.delete("tasks", task._id);
     for (const forDate of new Set(stale.map((t) => t.forDate))) {
-      await ctx.scheduler.runAfter(0, internal.ai.generateThree, { deviceId: goal.deviceId, forDate });
+      await ctx.scheduler.runAfter(0, internal.ai.generateThree, { deviceId: goal.deviceId, forDate, today });
     }
     await ctx.db.insert("checkins", {
       deviceId: goal.deviceId,
@@ -285,8 +288,10 @@ export const liveForAi = internalQuery({
       .query("goals")
       .withIndex("by_device_and_status", (q) => q.eq("deviceId", deviceId).eq("status", "active"))
       .take(MAX_ACTIVE);
+    const eligible = [];
+    for (const goal of goals) if (await routeGoalReady(ctx, goal)) eligible.push(goal);
     return await Promise.all(
-      goals.map(async (g) => {
+      eligible.map(async (g) => {
         const recent = await ctx.db
           .query("tasks")
           .withIndex("by_goal_and_status", (q) => q.eq("goalId", g._id).eq("status", "done"))

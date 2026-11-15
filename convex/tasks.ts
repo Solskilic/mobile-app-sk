@@ -53,7 +53,7 @@ async function shiftFinish(ctx: MutationCtx, goal: Doc<"goals">, days: number) {
   });
 }
 
-async function markMissed(ctx: MutationCtx, task: Doc<"tasks">) {
+async function markMissed(ctx: MutationCtx, task: Doc<"tasks">, today?: string) {
   if (task.status !== "open") return;
   await ctx.db.patch("tasks", task._id, { status: "missed" });
   const goal = await ctx.db.get("goals", task.goalId);
@@ -69,7 +69,7 @@ async function markMissed(ctx: MutationCtx, task: Doc<"tasks">) {
   const missStreak = goal.missStreak + 1;
   if (missStreak >= MISSES_BEFORE_SHRINK && goal.status === "active") {
     await ctx.db.patch("goals", goal._id, { missStreak: 0 });
-    await ctx.scheduler.runAfter(0, internal.ai.shrinkWeek, { goalId: goal._id });
+    await ctx.scheduler.runAfter(0, internal.ai.shrinkWeek, { goalId: goal._id, today });
   } else {
     await ctx.db.patch("goals", goal._id, { missStreak });
   }
@@ -110,24 +110,24 @@ export const setDone = mutation({
 });
 
 export const miss = mutation({
-  args: { taskId: v.id("tasks") },
+  args: { taskId: v.id("tasks"), today: v.optional(v.string()) },
   returns: v.null(),
-  handler: async (ctx, { taskId }) => {
+  handler: async (ctx, { taskId, today }) => {
     const task = await ctx.db.get("tasks", taskId);
-    if (task) await markMissed(ctx, task);
+    if (task) await markMissed(ctx, task, today);
     return null;
   },
 });
 
 export const lifeHappened = mutation({
-  args: { deviceId: v.string(), forDate: v.string() },
+  args: { deviceId: v.string(), forDate: v.string(), today: v.optional(v.string()) },
   returns: v.null(),
-  handler: async (ctx, { deviceId, forDate }) => {
+  handler: async (ctx, { deviceId, forDate, today }) => {
     const tasks = await ctx.db
       .query("tasks")
       .withIndex("by_device_and_forDate", (q) => q.eq("deviceId", deviceId).eq("forDate", forDate))
       .take(10);
-    for (const task of tasks) await markMissed(ctx, task);
+    for (const task of tasks) await markMissed(ctx, task, today);
     return null;
   },
 });
@@ -141,13 +141,13 @@ export const rollover = mutation({
       .withIndex("by_device_and_forDate", (q) => q.eq("deviceId", deviceId).lt("forDate", today))
       .order("desc")
       .take(30);
-    for (const task of stale) await markMissed(ctx, task);
+    for (const task of stale) await markMissed(ctx, task, today);
     return null;
   },
 });
 
 export const plan = mutation({
-  args: { deviceId: v.string(), forDate: v.string() },
+  args: { deviceId: v.string(), forDate: v.string(), today: v.optional(v.string()) },
   returns: v.null(),
   handler: async (ctx, args) => {
     await setPlannerState(ctx, args.deviceId, true);

@@ -11,6 +11,12 @@
 import type * as ai from "../ai.js";
 import type * as goals from "../goals.js";
 import type * as openai from "../openai.js";
+import type * as route from "../route.js";
+import type * as routeAdherence from "../routeAdherence.js";
+import type * as routeAi from "../routeAi.js";
+import type * as routeDemo from "../routeDemo.js";
+import type * as routeEngine from "../routeEngine.js";
+import type * as routeSample from "../routeSample.js";
 import type * as seed from "../seed.js";
 import type * as tasks from "../tasks.js";
 
@@ -24,6 +30,12 @@ declare const fullApi: ApiFromModules<{
   ai: typeof ai;
   goals: typeof goals;
   openai: typeof openai;
+  route: typeof route;
+  routeAdherence: typeof routeAdherence;
+  routeAi: typeof routeAi;
+  routeDemo: typeof routeDemo;
+  routeEngine: typeof routeEngine;
+  routeSample: typeof routeSample;
   seed: typeof seed;
   tasks: typeof tasks;
 }>;
