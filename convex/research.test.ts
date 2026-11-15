@@ -3,12 +3,12 @@
 import { convexTest } from 'convex-test';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { api, internal } from '../convex/_generated/api';
-import type { Id } from '../convex/_generated/dataModel';
-import schema from '../convex/schema';
-import { ResearchWeb } from '../convex/researchWeb';
+import { api, internal } from './_generated/api';
+import type { Id } from './_generated/dataModel';
+import schema from './schema';
+import { ResearchWeb } from './researchWeb';
 
-const modules = import.meta.glob('../convex/**/*.ts');
+const modules = import.meta.glob('./**/*.ts');
 const day = 24 * 60 * 60 * 1000;
 const now = Date.UTC(2026, 10, 15, 20);
 const source = { title: 'Test provider source', url: 'https://learn.example.org/basics', checkedAt: now, provenance: 'Test fixture' };
@@ -70,6 +70,19 @@ describe('research storage and route stops', () => {
     expect(result?.saved?._id).toBe(original);
   });
 
+  it('pins the last successful result through cleanup after repeated failed refreshes', async () => {
+    const t = setup(); const goalId = await goal(t); const original = await saved(t, goalId, 'done', now - 4 * day);
+    await saved(t, goalId, 'failed', now - 3 * day);
+    await saved(t, goalId, 'failed', now - 2 * day);
+    await saved(t, goalId, 'failed', now - day - 60_000);
+    const researchId = await t.mutation(api.research.start, { goalId });
+    await t.mutation(internal.research.patch, { researchId: researchId!, status: 'failed' });
+    const result = await t.query(api.research.get, { goalId });
+    expect(result?.saved?._id).toBe(original);
+    expect(result?.saved?.resources).toEqual([resource]);
+    expect(await t.run((ctx) => ctx.db.get('research', original))).not.toBeNull();
+  });
+
   it('limits fresh searches per device across goals', async () => {
     const t = setup(); const goalId = await goal(t);
     for (let i = 0; i < 8; i++) await saved(t, goalId, 'failed', now - 60_000 * (i + 11));
@@ -110,12 +123,12 @@ function output(name: string, value: unknown, urls: string[] = []) {
 }
 
 describe('research agent contract with mocked OpenAI', () => {
-  it('asks for background before searching career requirements', async () => {
+  it.each([undefined, 'Four hours weekly, free options'])('asks for complete background before searching career requirements: %s', async (background) => {
     vi.stubEnv('OPENAI_API_KEY', 'test-only-not-a-real-key');
     const fetch = vi.fn().mockResolvedValue(output('classify', { kind: 'career', academic: false, target: 'UX designer', knowsBackground: false, backgroundSummary: '', question: 'What have you studied and worked on?', location: '' }));
     vi.stubGlobal('fetch', fetch);
     const t = setup(); const goalId = await goal(t);
-    const researchId = await t.mutation(api.research.start, { goalId });
+    const researchId = await t.mutation(api.research.start, { goalId, background });
     await t.action(internal.researchAgent.run, { researchId: researchId! });
     const result = await t.query(api.research.get, { goalId });
     expect(result?.run?.status).toBe('needsBackground');
@@ -138,7 +151,7 @@ describe('research agent contract with mocked OpenAI', () => {
         case 'classify': return output('classify', { kind: 'career', academic: false, target: 'UX designer', knowsBackground: true, backgroundSummary: 'Biology and lab research', question: '', location: '' });
         case 'occupation_evidence': return output('occupation', { evidence: [] });
         case 'job_postings': return output('jobs', { postings }, [jobUrl]);
-        case 'skill_gaps': return output('gaps', { gaps: [{ ...gap, postings: [0] }] });
+        case 'skill_gaps': return output('gaps', { gaps: [gap, ...['C', 'C++', 'C#'].map((skill) => ({ ...gap, skill }))].map((g) => ({ ...g, postings: [0] })) });
         case 'resources': return output('resources', { summary: 'Build one prototype using a free course.', resources: [resource, { ...resource, title: 'Invented course', url: 'https://learn.example.org/not-in-search' }] }, [source.url]);
         default: throw new Error('Unexpected model request');
       }
@@ -148,6 +161,8 @@ describe('research agent contract with mocked OpenAI', () => {
     const result = (await t.query(api.research.get, { goalId }))!.run!;
     expect(result.status).toBe('done');
     expect(result.gaps[0].sources[0].url).toBe(jobUrl);
+    expect(result.gaps.map((g) => g.skill)).toEqual(['Prototyping', 'C', 'C++', 'C#']);
+    expect(new Set(result.gaps.map((g) => g.key)).size).toBe(4);
     expect(result.resources).toHaveLength(1);
     expect(result.resources[0].sources[0].checkedAt).toBe(now);
     expect(result.steps.some((s) => s.text.includes('Dropped 1 link'))).toBe(true);

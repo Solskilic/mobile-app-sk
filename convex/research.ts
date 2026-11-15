@@ -79,7 +79,10 @@ export const start = mutation({
     await ctx.scheduler.runAfter(0, internal.researchAgent.run, { researchId });
     await ctx.scheduler.runAfter(11 * 60 * 1000, internal.research.expire, { researchId });
     const old = await ctx.db.query("research").withIndex("by_goal", (q) => q.eq("goalId", goalId)).order("desc").take(12);
-    for (const row of old.slice(3)) if (now - row.startedAt > DAY) await ctx.db.delete("research", row._id);
+    const lastSuccess = old.find((row) => row.status === "done")?._id;
+    for (const row of old.slice(3)) {
+      if (now - row.startedAt > DAY && row._id !== lastSuccess) await ctx.db.delete("research", row._id);
+    }
     return researchId;
   },
 });

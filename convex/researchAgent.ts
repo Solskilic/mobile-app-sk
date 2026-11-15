@@ -22,7 +22,6 @@ type Found = ResearchWeb;
 type Run = { ctx: ActionCtx; researchId: Id<"research">; found: Found };
 
 const message = (e: unknown) => (e instanceof Error ? e.message : String(e)).slice(0, 300);
-const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 60);
 const host = (url: string) => {
   try {
     return new URL(url).hostname.replace(/^www\./, "");
@@ -262,10 +261,10 @@ export const run = internalAction({
         `Classify this life change. Career and academic pivots (new job, new field, grad school) are 'career'. Everything else people do for fun or health is 'hobby'.
 ${about}`,
       );
-      const background = doc.background || c.backgroundSummary;
+      const background = [doc.background, c.backgroundSummary].filter(Boolean).join("\n");
       const location = doc.location || c.location;
       await patch({ kind: c.kind, target: c.target });
-      if (c.kind === "career" && !doc.background && !c.knowsBackground) {
+      if (c.kind === "career" && !c.knowsBackground) {
         await patch({ status: "needsBackground", question: c.question || "What is your background right now: studies, jobs, and tools you already use?" });
         return null;
       }
@@ -352,7 +351,8 @@ Merge overlapping requirements into skills and mark each as have / partial / mis
             .map((i) => postings[i])
             .filter((p): p is Posting => !!p)
             .map((p) => cite(r.found, p.url, `${p.title}, ${p.company}`));
-          return sources.length ? [{ key: `gap:${slug(gap.skill)}`, skill: gap.skill, status: gap.status, why: gap.why, stopTitle: gap.stopTitle, milestone: gap.milestone, sources }] : [];
+          const key = `gap:${encodeURIComponent(gap.skill.normalize("NFKC").trim().toLowerCase().replace(/\s+/g, " "))}`;
+          return sources.length ? [{ key, skill: gap.skill, status: gap.status, why: gap.why, stopTitle: gap.stopTitle, milestone: gap.milestone, sources }] : [];
         }).filter((gap, i, all) => all.findIndex((other) => other.key === gap.key) === i);
         await patch({ gaps });
 

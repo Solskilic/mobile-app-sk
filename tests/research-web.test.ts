@@ -1,3 +1,5 @@
+// @vitest-environment node
+
 import { describe, expect, it } from 'vitest';
 
 import { publicAddress, ResearchWeb, robotRules, robotsAllow, sourceUrl } from '../convex/researchWeb';
