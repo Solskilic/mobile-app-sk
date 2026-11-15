@@ -6,6 +6,7 @@ import { Pressable, View } from 'react-native';
 
 import { BackLink, Button, Card, Celebration, Ladder, Screen, SmartCard, T, Thinking, VerdictCard } from '@/components/goal-ui';
 import { Spacing } from '@/constants/theme';
+import { GoalPractice } from '@/components/practice/goal-practice';
 import { formatDay, localDate } from '@/lib/plan';
 import { api } from '../../../convex/_generated/api';
 import type { Id } from '../../../convex/_generated/dataModel';
@@ -126,6 +127,7 @@ export default function GoalScreen() {
       ) : null}
 
       {goal.smart ? <SmartCard smart={goal.smart} /> : null}
+      {goal.rungs.length > 0 ? <GoalPractice goalId={goalId} canPractice={goal.status === 'active'} /> : null}
 
       {goal.rungs.length > 0 ? (
         <Card>

@@ -11,6 +11,8 @@
 import type * as ai from "../ai.js";
 import type * as goals from "../goals.js";
 import type * as openai from "../openai.js";
+import type * as practice from "../practice.js";
+import type * as practiceAi from "../practiceAi.js";
 import type * as seed from "../seed.js";
 import type * as tasks from "../tasks.js";
 
@@ -24,6 +26,8 @@ declare const fullApi: ApiFromModules<{
   ai: typeof ai;
   goals: typeof goals;
   openai: typeof openai;
+  practice: typeof practice;
+  practiceAi: typeof practiceAi;
   seed: typeof seed;
   tasks: typeof tasks;
 }>;

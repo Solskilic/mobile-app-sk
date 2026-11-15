@@ -24,6 +24,14 @@
       "favicon": "./assets/images/favicon.png"
     },
     "plugins": [
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Choose a photo to keep a visual record of your progress.",
+          "cameraPermission": "Take a photo to keep a visual record of your progress.",
+          "microphonePermission": false
+        }
+      ],
       "expo-router",
       [
         "expo-splash-screen",
