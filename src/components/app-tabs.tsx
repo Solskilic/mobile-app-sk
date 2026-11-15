@@ -13,19 +13,18 @@ export default function AppTabs() {
       indicatorColor={colors.backgroundElement}
       labelStyle={{ selected: { color: colors.text } }}>
       <NativeTabs.Trigger name="index">
-        <NativeTabs.Trigger.Label>Home</NativeTabs.Trigger.Label>
-        <NativeTabs.Trigger.Icon
-          src={require('@/assets/images/tabIcons/home.png')}
-          renderingMode="template"
-        />
+        <NativeTabs.Trigger.Label>Today</NativeTabs.Trigger.Label>
+        <NativeTabs.Trigger.Icon sf="sun.max" md="today" />
       </NativeTabs.Trigger>
 
-      <NativeTabs.Trigger name="explore">
-        <NativeTabs.Trigger.Label>Explore</NativeTabs.Trigger.Label>
-        <NativeTabs.Trigger.Icon
-          src={require('@/assets/images/tabIcons/explore.png')}
-          renderingMode="template"
-        />
+      <NativeTabs.Trigger name="goals">
+        <NativeTabs.Trigger.Label>Goals</NativeTabs.Trigger.Label>
+        <NativeTabs.Trigger.Icon sf="mountain.2" md="flag" />
+      </NativeTabs.Trigger>
+
+      <NativeTabs.Trigger name="wins">
+        <NativeTabs.Trigger.Label>Wins</NativeTabs.Trigger.Label>
+        <NativeTabs.Trigger.Icon sf="trophy" md="emoji_events" />
       </NativeTabs.Trigger>
     </NativeTabs>
   );
