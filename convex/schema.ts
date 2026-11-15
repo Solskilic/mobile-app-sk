@@ -112,4 +112,41 @@ export default defineSchema({
   })
     .index("by_device", ["deviceId"])
     .index("by_goal", ["goalId"]),
+  practice: defineTable({
+    deviceId: v.string(),
+    goalId: v.id("goals"),
+    rungIndex: v.number(),
+    url: v.string(),
+    source: v.union(v.literal("youtube"), v.literal("tiktok"), v.literal("article")),
+    status: v.union(v.literal("fetching"), v.literal("needsNote"), v.literal("ready"), v.literal("failed")),
+    sourceTitle: v.optional(v.string()),
+    found: v.optional(v.string()),
+    userNote: v.optional(v.string()),
+    ask: v.optional(v.string()),
+    title: v.optional(v.string()),
+    minutes: v.optional(v.number()),
+    howTo: v.optional(v.string()),
+    why: v.optional(v.string()),
+    doneAt: v.optional(v.number()),
+    error: v.optional(v.string()),
+  }).index("by_goal", ["goalId"]),
+
+  proofs: defineTable({
+    deviceId: v.string(),
+    goalId: v.id("goals"),
+    taskId: v.optional(v.id("tasks")),
+    practiceId: v.optional(v.id("practice")),
+    storageId: v.id("_storage"),
+    forTitle: v.string(),
+    today: v.string(),
+    status: v.union(v.literal("checking"), v.literal("logged"), v.literal("unclear"), v.literal("failed")),
+    shows: v.optional(v.string()),
+    progress: v.optional(v.string()),
+    note: v.optional(v.string()),
+    isAttempt: v.optional(v.boolean()),
+    feedback: v.optional(v.object({ better: v.string(), still: v.string(), next: v.string() })),
+    error: v.optional(v.string()),
+  })
+    .index("by_goal", ["goalId"])
+    .index("by_task", ["taskId"]),
 });

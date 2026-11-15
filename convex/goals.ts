@@ -143,6 +143,7 @@ export const resume = mutation({
 });
 
 async function removeGoal(ctx: MutationCtx, goalId: Id<"goals">) {
+  await ctx.runMutation(internal.practice.cleanupGoal, { goalId });
   for (const rung of await rungsOf(ctx, goalId)) await ctx.db.delete("rungs", rung._id);
   for (const status of ["open", "done", "missed"] as const) {
     const tasks = await ctx.db

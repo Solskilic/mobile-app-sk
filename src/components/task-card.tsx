@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 
 import { Button, Card, T } from '@/components/goal-ui';
+import { PhotoProof } from '@/components/practice/photo-proof';
 import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { api } from '../../convex/_generated/api';
@@ -63,6 +64,7 @@ export function TaskCard({ task, today, past }: { task: TaskView; today: string;
       <T size={14} tone="textSecondary">
         {task.why}
       </T>
+      <PhotoProof target={{ taskId: task._id }} />
       {!past && task.status === 'open' ? (
         <View style={styles.actions}>
           <Button small kind="quiet" label="Swap" busy={busy === 'swap'} disabled={!!busy} onPress={() => run('swap')} />
