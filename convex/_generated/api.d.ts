@@ -17,6 +17,8 @@ import type * as routeAi from "../routeAi.js";
 import type * as routeDemo from "../routeDemo.js";
 import type * as routeEngine from "../routeEngine.js";
 import type * as routeSample from "../routeSample.js";
+import type * as research from "../research.js";
+import type * as researchAgent from "../researchAgent.js";
 import type * as seed from "../seed.js";
 import type * as tasks from "../tasks.js";
 
@@ -36,6 +38,8 @@ declare const fullApi: ApiFromModules<{
   routeDemo: typeof routeDemo;
   routeEngine: typeof routeEngine;
   routeSample: typeof routeSample;
+  research: typeof research;
+  researchAgent: typeof researchAgent;
   seed: typeof seed;
   tasks: typeof tasks;
 }>;

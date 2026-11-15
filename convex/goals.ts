@@ -145,6 +145,8 @@ export const resume = mutation({
 });
 
 async function removeGoal(ctx: MutationCtx, goalId: Id<"goals">) {
+  const research = await ctx.db.query("research").withIndex("by_goal", (q) => q.eq("goalId", goalId)).take(20);
+  for (const run of research) await ctx.db.delete("research", run._id);
   for (const rung of await rungsOf(ctx, goalId)) await ctx.db.delete("rungs", rung._id);
   for (const status of ["open", "done", "missed"] as const) {
     const tasks = await ctx.db

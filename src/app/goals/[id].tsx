@@ -127,6 +127,12 @@ export default function GoalScreen() {
 
       {goal.smart ? <SmartCard smart={goal.smart} /> : null}
 
+      <Card>
+        <T weight="700">Research your next move</T>
+        <T size={14} tone="textSecondary">Compare your background with real job requirements, then find checked courses and communities.</T>
+        <Button kind="quiet" label="Research with sources" onPress={() => router.push(`/goals/research/${goalId}`)} />
+      </Card>
+
       {goal.rungs.length > 0 ? (
         <Card>
           <T size={12} weight="700" tone="textSecondary">

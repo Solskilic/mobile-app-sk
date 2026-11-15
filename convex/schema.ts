@@ -1,5 +1,6 @@
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
+import { researchFields } from "./researchTypes";
 
 export const goalStatus = v.union(
   v.literal("clarifying"),
@@ -170,4 +171,7 @@ export default defineSchema({
     endDate: v.string(),
     reason: v.string(),
   }).index("by_device_and_endDate", ["deviceId", "endDate"]),
+  research: defineTable(researchFields)
+    .index("by_goal", ["goalId"])
+    .index("by_device_and_startedAt", ["deviceId", "startedAt"]),
 });
