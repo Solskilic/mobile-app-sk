@@ -30,6 +30,7 @@
     "react-native-worklets": "0.13.0"
   },
   "devDependencies": {
+    "@edge-runtime/vm": "^5.0.0",
     "@types/node": "^26.6.6",
     "@types/react": "~19.3.0",
     "convex-test": "^0.0.71",

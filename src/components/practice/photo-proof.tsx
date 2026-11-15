@@ -88,7 +88,6 @@ export function ProofNote({ proof }: { proof: Doc<'proofs'> }) {
 }
 
 export function PhotoProof({ target }: { target: Target }) {
-  const uploadUrl = useMutation(api.practice.generateUploadUrl);
   const addProof = useMutation(api.practice.addProof);
   const latest = useQuery(
     api.practice.forTask,
@@ -141,30 +140,28 @@ export function PhotoProof({ target }: { target: Target }) {
     setBusy(true);
     setError(null);
     try {
-      const blob = asset.file ?? (await (await fetch(asset.uri)).blob());
-      if (blob.size > 10 * 1024 * 1024) throw new Error('size');
-      const type = blob.type || asset.mimeType || 'image/jpeg';
+      const response = await fetch(asset.uri);
+      const image = await response.arrayBuffer();
+      if (image.byteLength > 10 * 1024 * 1024) throw new Error('size');
+      const type =
+        asset.mimeType || response.headers.get('Content-Type') || 'image/jpeg';
       if (
         !['image/jpeg', 'image/png', 'image/webp', 'image/gif'].includes(type)
       ) {
         setError('Please choose a JPG, PNG, WebP or GIF photo.');
         return;
       }
-      const response = await fetch(await uploadUrl({}), {
-        method: 'POST',
-        headers: { 'Content-Type': type },
-        body: blob,
+      await addProof({
+        image,
+        mimeType: type,
+        ...target,
+        today: localDate(),
       });
-      if (!response.ok) throw new Error('upload');
-      const { storageId } = (await response.json()) as {
-        storageId: Id<'_storage'>;
-      };
-      await addProof({ storageId, ...target, today: localDate() });
       setAsset(null);
       setSaved(true);
     } catch {
       setError(
-        "Your photo didn't save. Try again when you're ready; checking off a step never needs a photo.",
+        "We couldn't confirm that save. Check your timeline before trying again; a photo is always optional.",
       );
     } finally {
       setBusy(false);
@@ -213,7 +210,8 @@ export function PhotoProof({ target }: { target: Target }) {
           <T size={13} tone="textSecondary">
             Saving sends this photo and up to three earlier attempts to OpenAI
             for a kind reflection. This shared demo is not private; avoid faces
-            or private details. If it fits this step, the step will be checked off.
+            or private details. If it fits this step, the step will be checked
+            off.
           </T>
           <View style={{ flexDirection: 'row', gap: 8 }}>
             <Button small label="Save & reflect" busy={busy} onPress={save} />

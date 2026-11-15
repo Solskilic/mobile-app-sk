@@ -138,6 +138,8 @@ export default defineSchema({
     practiceId: v.optional(v.id("practice")),
     storageId: v.id("_storage"),
     forTitle: v.string(),
+    criteria: v.optional(v.string()),
+    targetSnapshot: v.optional(v.string()),
     today: v.string(),
     status: v.union(v.literal("checking"), v.literal("logged"), v.literal("unclear"), v.literal("failed")),
     shows: v.optional(v.string()),

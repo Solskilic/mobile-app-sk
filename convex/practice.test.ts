@@ -1,15 +1,11 @@
+/// <reference types="vite/client" />
 import { convexTest } from 'convex-test';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { api, internal } from '../convex/_generated/api';
-import schema from '../convex/schema';
+import { api, internal } from './_generated/api';
+import schema from './schema';
 
-const modules = {
-  '../convex/_generated/server.ts': () => import('../convex/_generated/server'),
-  '../convex/practice.ts': () => import('../convex/practice'),
-  '../convex/practiceAi.ts': () => import('../convex/practiceAi'),
-  '../convex/tasks.ts': () => import('../convex/tasks'),
-  '../convex/goals.ts': () => import('../convex/goals'),
-};
+const modules = import.meta.glob('./**/*.ts');
+const photo = { image: new ArrayBuffer(16), mimeType: 'image/png' };
 
 beforeEach(() => vi.useFakeTimers());
 afterEach(() => {
@@ -42,10 +38,7 @@ async function setup() {
       status: 'missed',
       shrunk: false,
     });
-    const storageId = await ctx.storage.store(
-      new Blob(['test image bytes'], { type: 'image/png' }),
-    );
-    return { goalId, taskId, storageId };
+    return { goalId, taskId };
   });
   return { t, ...ids };
 }
@@ -203,11 +196,136 @@ describe('content to practice', () => {
 });
 
 describe('photo proof', () => {
+  it('never stores a detached file when the target disappeared before saving', async () => {
+    const { t, taskId } = await setup();
+    await t.run(async (ctx) => await ctx.db.delete('tasks', taskId));
+    await expect(
+      t.mutation(api.practice.addProof, {
+        taskId,
+        ...photo,
+        today: '2026-11-15',
+      }),
+    ).rejects.toThrow('Step not found');
+    const files = await t.run(
+      async (ctx) => await ctx.db.system.query('_storage').collect(),
+    );
+    expect(files).toEqual([]);
+  });
+
+  it.each(['swap', 'shrink'])(
+    'keeps the reflection without completing a task changed by %s',
+    async (change) => {
+      const { t, goalId, taskId } = await setup();
+      await t.run(
+        async (ctx) => await ctx.db.patch('tasks', taskId, { status: 'open' }),
+      );
+      const proofId = await t.mutation(api.practice.addProof, {
+        taskId,
+        ...photo,
+        today: '2026-11-15',
+      });
+      if (change === 'swap') {
+        await t.mutation(internal.tasks.rewrite, {
+          taskId,
+          title: 'Draw a room',
+          why: 'Practice perspective',
+          minutes: 15,
+          shrunk: false,
+        });
+      } else {
+        await t.mutation(internal.tasks.applyWeekShrink, {
+          goalId,
+          note: 'A lighter week',
+          minutesCap: 5,
+          slipDays: 0,
+          rewrites: [{ taskId, title: 'Draw five hands', minutes: 5 }],
+        });
+      }
+      await t.mutation(internal.practice.saveProof, {
+        proofId,
+        status: 'logged',
+        note: 'Five hand studies saved.',
+      });
+      expect(
+        await t.run(async (ctx) => (await ctx.db.get('tasks', taskId))?.status),
+      ).toBe('open');
+      const [proof] = await t.query(api.practice.gallery, { goalId });
+      expect(proof.status).toBe('logged');
+      expect(proof.note).toContain('Your step changed');
+      const checkins = await t.run(
+        async (ctx) =>
+          await ctx.db
+            .query('checkins')
+            .withIndex('by_goal', (q) => q.eq('goalId', goalId))
+            .collect(),
+      );
+      expect(checkins.some((c) => c.kind === 'done')).toBe(false);
+    },
+  );
+
+  it('includes the full practice instructions and duration in the vision request', async () => {
+    const { t, goalId } = await setup();
+    const practiceId = await t.run(
+      async (ctx) =>
+        await ctx.db.insert('practice', {
+          deviceId: 'test-device',
+          goalId,
+          rungIndex: 0,
+          source: 'youtube',
+          url: 'https://youtu.be/lesson',
+          status: 'ready',
+          title: 'Practice hand construction',
+          minutes: 20,
+          howTo: 'Draw ten hands using simple boxes.',
+        }),
+    );
+    const proofId = await t.mutation(api.practice.addProof, {
+      practiceId,
+      ...photo,
+      today: '2026-11-15',
+    });
+    vi.stubEnv('OPENAI_API_KEY', 'test-only-not-a-secret');
+    const fetch = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          output: [
+            {
+              content: [
+                {
+                  type: 'output_text',
+                  text: JSON.stringify({
+                    matches: false,
+                    shows: 'One hand study',
+                    progress: 'One study',
+                    note: 'One attempt is worth keeping.',
+                    isAttempt: true,
+                    better: '',
+                    still: '',
+                    next: '',
+                  }),
+                },
+              ],
+            },
+          ],
+        }),
+      ),
+    );
+    vi.stubGlobal('fetch', fetch);
+    await t.action(internal.practiceAi.checkProof, { proofId });
+    const payload = JSON.parse(fetch.mock.calls[0][1].body);
+    const prompt = payload.input[1].content[0].text;
+    expect(prompt).toContain('Draw ten hands using simple boxes.');
+    expect(prompt).toContain('20 minutes');
+    expect(
+      (await t.query(api.practice.forGoal, { goalId }))[0].doneAt,
+    ).toBeUndefined();
+  });
+
   it('logs the note and checks off a missed task atomically without double counting', async () => {
-    const { t, goalId, taskId, storageId } = await setup();
+    const { t, goalId, taskId } = await setup();
     const proofId = await t.mutation(api.practice.addProof, {
       taskId,
-      storageId,
+      ...photo,
       today: '2026-11-15',
     });
     await t.mutation(internal.practice.saveProof, {
@@ -237,10 +355,10 @@ describe('photo proof', () => {
   });
 
   it('does not check off an unclear photo, so manual completion stays available', async () => {
-    const { t, taskId, storageId } = await setup();
+    const { t, taskId } = await setup();
     const proofId = await t.mutation(api.practice.addProof, {
       taskId,
-      storageId,
+      ...photo,
       today: '2026-11-15',
     });
     await t.mutation(internal.practice.saveProof, {
@@ -255,7 +373,7 @@ describe('photo proof', () => {
   });
 
   it('checks off a practice step and selects only earlier comparable attempts', async () => {
-    const { t, goalId, storageId } = await setup();
+    const { t, goalId } = await setup();
     const practiceId = await t.run(
       async (ctx) =>
         await ctx.db.insert('practice', {
@@ -270,7 +388,7 @@ describe('photo proof', () => {
     );
     const first = await t.mutation(api.practice.addProof, {
       practiceId,
-      storageId,
+      ...photo,
       today: '2026-11-15',
     });
     await t.mutation(internal.practice.saveProof, {
@@ -285,7 +403,7 @@ describe('photo proof', () => {
     vi.advanceTimersByTime(1);
     const second = await t.mutation(api.practice.addProof, {
       goalId,
-      storageId,
+      ...photo,
       today: '2026-11-15',
     });
     const context = await t.query(internal.practice.proofForAi, {
@@ -297,14 +415,11 @@ describe('photo proof', () => {
 
   it('rejects arbitrary files and ambiguous targets', async () => {
     const { t, goalId, taskId } = await setup();
-    const storageId = await t.run(
-      async (ctx) =>
-        await ctx.storage.store(new Blob(['<html>'], { type: 'text/html' })),
-    );
     await expect(
       t.mutation(api.practice.addProof, {
         goalId,
-        storageId,
+        ...photo,
+        mimeType: 'text/html',
         today: '2026-11-15',
       }),
     ).rejects.toThrow('Choose a JPG');
@@ -312,17 +427,17 @@ describe('photo proof', () => {
       t.mutation(api.practice.addProof, {
         goalId,
         taskId,
-        storageId,
+        ...photo,
         today: '2026-11-15',
       }),
     ).rejects.toThrow('Choose one');
   });
 
   it('does not resurrect a photo deleted while vision was running', async () => {
-    const { t, goalId, storageId } = await setup();
+    const { t, goalId } = await setup();
     const proofId = await t.mutation(api.practice.addProof, {
       goalId,
-      storageId,
+      ...photo,
       today: '2026-11-15',
     });
     await t.mutation(api.practice.removeProof, { proofId });
@@ -335,16 +450,17 @@ describe('photo proof', () => {
   });
 
   it('deletes the stored photos and practice steps when a goal is removed', async () => {
-    const { t, goalId, storageId } = await setup();
+    const { t, goalId } = await setup();
     await t.mutation(api.practice.addProof, {
       goalId,
-      storageId,
+      ...photo,
       today: '2026-11-15',
     });
     await t.mutation(api.practice.addLink, {
       goalId,
       url: 'https://example.com/tutorial',
     });
+    const [{ storageId }] = await t.query(api.practice.gallery, { goalId });
     await t.mutation(api.goals.remove, { goalId });
     expect(await t.query(api.practice.gallery, { goalId })).toEqual([]);
     expect(await t.query(api.practice.forGoal, { goalId })).toEqual([]);
@@ -354,10 +470,10 @@ describe('photo proof', () => {
   });
 
   it('sends actual image inputs with earlier attempts and saves specific feedback', async () => {
-    const { t, goalId, storageId } = await setup();
+    const { t, goalId } = await setup();
     const first = await t.mutation(api.practice.addProof, {
       goalId,
-      storageId,
+      ...photo,
       today: '2026-11-15',
     });
     await t.mutation(internal.practice.saveProof, {
@@ -369,7 +485,7 @@ describe('photo proof', () => {
     vi.advanceTimersByTime(1);
     const second = await t.mutation(api.practice.addProof, {
       goalId,
-      storageId,
+      ...photo,
       today: '2026-11-15',
     });
     vi.stubEnv('OPENAI_API_KEY', 'test-only-not-a-secret');
@@ -416,10 +532,10 @@ describe('photo proof', () => {
   });
 
   it('keeps service errors retryable without exposing upstream response bodies', async () => {
-    const { t, goalId, storageId } = await setup();
+    const { t, goalId } = await setup();
     const proofId = await t.mutation(api.practice.addProof, {
       goalId,
-      storageId,
+      ...photo,
       today: '2026-11-15',
     });
     vi.stubEnv('OPENAI_API_KEY', 'test-only-not-a-secret');

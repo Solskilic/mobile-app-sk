@@ -445,9 +445,12 @@ export const checkProof = internalAction({
           type: "input_text",
           text: `Goal: ${goal.smart?.statement ?? goal.title}
 They are logging this step: "${proof.forTitle}"
+Full completion criteria captured when the photo was submitted:
+${proof.criteria ?? proof.forTitle}
 The FIRST image is their new photo.${earlier.length ? ` The next ${earlier.length} image(s) are their earlier attempts at this goal, newest first (${earlier.map((e) => `${new Date(e.at).toDateString()}: ${e.shows}`).join("; ")}).` : ""}
 
 Look at the new photo and decide whether it reasonably supports completing this step (a drawing, pages of a book, a watch or app screen with distance or time, a finished piece, notes, a certificate, etc). Be kind and generous about practice, but do not check off a quantified step if a clearly visible measurement falls short of its target. A partial attempt still counts as progress: describe it kindly, but set matches=false so the person can decide when to check off the step.
+Use the full instructions and counts above, not only the short title. Never infer elapsed time from a still photo. A visible completed practice output can support a step whose duration is only a planning estimate, but do not claim that an exact duration was verified.
 - shows: what the photo shows, one short plain line.
 - progress: the measurable progress you can read, e.g. "Read pages 41-58", "5.2 km in 31 min", "One hand study". Empty if none.
 - note: a one-line kind log note for their journal.

@@ -7,6 +7,34 @@ import {
   query,
 } from "./_generated/server";
 import schema from "./schema";
+import type { Doc } from "./_generated/dataModel";
+
+function taskTarget(task: Doc<"tasks">) {
+  return {
+    targetSnapshot: JSON.stringify([
+      task.goalId,
+      task.rungIndex,
+      task.title,
+      task.why,
+      task.minutes,
+      task.forDate,
+    ]),
+    criteria: `Step: ${task.title}\nPlanned practice time: ${task.minutes} minutes.\nPurpose: ${task.why}`,
+  };
+}
+
+function practiceTarget(step: Doc<"practice">) {
+  return {
+    targetSnapshot: JSON.stringify([
+      step.goalId,
+      step.rungIndex,
+      step.title,
+      step.minutes,
+      step.howTo,
+    ]),
+    criteria: `Step: ${step.title ?? ""}\nPlanned practice time: ${step.minutes ?? 15} minutes.\nInstructions: ${step.howTo ?? ""}`,
+  };
+}
 
 function sourceOf(url: string) {
   const host = new URL(url).hostname.replace(/^www\.|^m\./, "");
@@ -117,22 +145,20 @@ export const forGoal = query({
   },
 });
 
-export const generateUploadUrl = mutation({
-  args: {},
-  returns: v.string(),
-  handler: async (ctx) => await ctx.storage.generateUploadUrl(),
-});
-
 export const addProof = mutation({
   args: {
-    storageId: v.id("_storage"),
+    image: v.bytes(),
+    mimeType: v.string(),
     taskId: v.optional(v.id("tasks")),
     practiceId: v.optional(v.id("practice")),
     goalId: v.optional(v.id("goals")),
     today: v.string(),
   },
   returns: v.id("proofs"),
-  handler: async (ctx, { storageId, taskId, practiceId, goalId, today }) => {
+  handler: async (
+    ctx,
+    { image, mimeType, taskId, practiceId, goalId, today },
+  ) => {
     if ([taskId, practiceId, goalId].filter(Boolean).length !== 1)
       throw new Error("Choose one step or goal");
     const task = taskId ? await ctx.db.get("tasks", taskId) : null;
@@ -142,16 +168,18 @@ export const addProof = mutation({
     const target = task?.goalId ?? item?.goalId ?? goalId;
     const goal = target ? await ctx.db.get("goals", target) : null;
     if (!goal) throw new Error("Goal not found");
-    const file = await ctx.db.system.get("_storage", storageId);
     if (
-      !file ||
       !["image/jpeg", "image/png", "image/webp", "image/gif"].includes(
-        file.contentType ?? "",
+        mimeType,
       ) ||
-      file.size > 10 * 1024 * 1024
+      image.byteLength === 0 ||
+      image.byteLength > 10 * 1024 * 1024
     )
       throw new Error("Choose a JPG, PNG, WebP or GIF under 10 MB");
     if (!/^\d{4}-\d{2}-\d{2}$/.test(today)) throw new Error("Invalid date");
+    const storageId = await ctx.storage.store(
+      new Blob([image], { type: mimeType }),
+    );
     const proofId = await ctx.db.insert("proofs", {
       deviceId: goal.deviceId,
       goalId: goal._id,
@@ -159,6 +187,11 @@ export const addProof = mutation({
       practiceId: item?._id,
       storageId,
       forTitle: task?.title ?? item?.title ?? goal.title,
+      ...(task
+        ? taskTarget(task)
+        : item
+          ? practiceTarget(item)
+          : { criteria: goal.smart?.statement ?? goal.title }),
       today,
       status: "checking",
     });
@@ -382,9 +415,29 @@ export const saveProof = internalMutation({
     if (proof.status !== "checking") return null;
     await ctx.db.patch("proofs", proofId, fields);
     if (fields.status !== "logged") return null;
-    if (proof.practiceId && (await ctx.db.get("practice", proof.practiceId)))
-      await ctx.db.patch("practice", proof.practiceId, { doneAt: Date.now() });
-    if (proof.taskId && (await ctx.db.get("tasks", proof.taskId))) {
+    if (proof.practiceId) {
+      const step = await ctx.db.get("practice", proof.practiceId);
+      if (
+        step &&
+        proof.targetSnapshot === practiceTarget(step).targetSnapshot
+      ) {
+        await ctx.db.patch("practice", proof.practiceId, {
+          doneAt: Date.now(),
+        });
+      } else {
+        await ctx.db.patch("proofs", proofId, {
+          note: `${fields.note ?? ""} Your practice step changed, so this photo was kept without checking off the new step.`.trim(),
+        });
+      }
+    }
+    if (proof.taskId) {
+      const task = await ctx.db.get("tasks", proof.taskId);
+      if (!task || proof.targetSnapshot !== taskTarget(task).targetSnapshot) {
+        await ctx.db.patch("proofs", proofId, {
+          note: `${fields.note ?? ""} Your step changed, so this photo was kept without checking off the new step.`.trim(),
+        });
+        return null;
+      }
       await ctx.runMutation(api.tasks.setDone, {
         taskId: proof.taskId,
         done: true,
