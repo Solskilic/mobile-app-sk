@@ -2,7 +2,6 @@ import { type ReactNode } from 'react';
 import Animated, {
   FadeIn,
   FadeInDown,
-  LinearTransition,
   ReduceMotion,
 } from 'react-native-reanimated';
 import { router, usePathname } from 'expo-router';
@@ -10,6 +9,7 @@ import { useConvexConnectionState } from 'convex/react';
 import {
   ActivityIndicator,
   Modal,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -86,7 +86,11 @@ export function Screen({ children }: { children: ReactNode }) {
         keyboardShouldPersistTaps="handled"
       >
         <Animated.View
-          entering={FadeIn.duration(180).reduceMotion(ReduceMotion.System)}
+          entering={
+            Platform.OS === 'web'
+              ? undefined
+              : FadeIn.duration(180).reduceMotion(ReduceMotion.System)
+          }
           style={{
             width: '100%',
             maxWidth: MaxContentWidth,
@@ -168,10 +172,13 @@ export function Card({
   const theme = useTheme();
   return (
     <Animated.View
-      entering={FadeInDown.duration(260)
-        .withInitialValues({ translateY: 10 })
-        .reduceMotion(ReduceMotion.System)}
-      layout={LinearTransition.duration(220).reduceMotion(ReduceMotion.System)}
+      entering={
+        Platform.OS === 'web'
+          ? undefined
+          : FadeInDown.duration(260)
+              .withInitialValues({ transform: [{ translateY: 10 }] })
+              .reduceMotion(ReduceMotion.System)
+      }
       style={[
         styles.card,
         {

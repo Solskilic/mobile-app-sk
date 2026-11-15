@@ -1,5 +1,5 @@
 import { useEffect, type ReactNode } from 'react';
-import { Text, View } from 'react-native';
+import { Platform, Text, View } from 'react-native';
 import Svg, {
   Circle,
   G,
@@ -22,18 +22,26 @@ import { useTheme } from '@/hooks/use-theme';
 
 const Stroke = Animated.createAnimatedComponent(Path);
 const Bar = Animated.createAnimatedComponent(Rect);
-export const enter = FadeInDown.duration(280)
-  .withInitialValues({ translateY: 12 })
-  .reduceMotion(ReduceMotion.System);
-export const resize = LinearTransition.duration(240).reduceMotion(
-  ReduceMotion.System,
-);
+export const enter =
+  Platform.OS === 'web'
+    ? undefined
+    : FadeInDown.duration(280)
+        .withInitialValues({ transform: [{ translateY: 12 }] })
+        .reduceMotion(ReduceMotion.System);
+export const resize =
+  Platform.OS === 'web'
+    ? undefined
+    : LinearTransition.duration(240).reduceMotion(ReduceMotion.System);
 
 export function MotionGroup({ children }: { children: ReactNode }) {
   return (
     <Animated.View
       entering={enter}
-      exiting={FadeOut.duration(130).reduceMotion(ReduceMotion.System)}
+      exiting={
+        Platform.OS === 'web'
+          ? undefined
+          : FadeOut.duration(130).reduceMotion(ReduceMotion.System)
+      }
       layout={resize}
       style={{ gap: 20 }}
       collapsable={false}
