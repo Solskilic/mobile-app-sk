@@ -34,7 +34,7 @@ export function ProgressGallery({ goalId }: { goalId: Id<'goals'> }) {
       const blob = await (await fetch(selected.uri)).blob();
       if (blob.size > 10 * 1024 * 1024) throw new Error('Choose a photo under 10 MB.');
       const url = await uploadUrl({ goalId });
-      const response = await fetch(url, { method: 'POST', headers: { 'Content-Type': selected.mimeType ?? blob.type ?? 'image/jpeg' }, body: blob });
+      const response = await fetch(url, { method: 'POST', headers: { 'Content-Type': selected.mimeType || blob.type || 'image/jpeg' }, body: blob });
       if (!response.ok) throw new Error('The upload didn’t finish. Try again.');
       const { storageId } = await response.json() as { storageId: Id<'_storage'> };
       await add({ goalId, storageId, caption }); setSelected(null); setCaption('');

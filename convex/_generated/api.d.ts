@@ -9,8 +9,8 @@
  */
 
 import type * as ai from "../ai.js";
-import type * as goals from "../goals.js";
 import type * as gallery from "../gallery.js";
+import type * as goals from "../goals.js";
 import type * as openai from "../openai.js";
 import type * as research from "../research.js";
 import type * as researchAgent from "../researchAgent.js";
@@ -33,8 +33,8 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   ai: typeof ai;
-  goals: typeof goals;
   gallery: typeof gallery;
+  goals: typeof goals;
   openai: typeof openai;
   research: typeof research;
   researchAgent: typeof researchAgent;

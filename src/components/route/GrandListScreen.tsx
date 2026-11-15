@@ -47,7 +47,12 @@ export default function GrandListScreen() {
       <T tone="textSecondary" size={18}>One big thing. Or everything on your mind.</T>
       <Card><TextInput accessibilityLabel="What do you want to change?" multiline maxLength={6000} value={input} onChangeText={setInput} placeholder={'Run a marathon\nFind my people in Seattle\nMake room for drawing again'} placeholderTextColor={theme.textSecondary} style={[field, { minHeight: 190, textAlignVertical: 'top' }]} /></Card>
       <Button label="Find a way forward  →" disabled={!input.trim()} onPress={() => setStep(1)} />
-      <Button kind="ghost" label="Try marathon + finding friends" onPress={() => setInput('Run my first marathon, starting from comfortable 5K runs\nMake friends in Seattle through a regular group activity')} />
+      <T size={12} tone="textSecondary">OR START WITH AN EXAMPLE PROMPT</T>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>{[
+        ['Career pivot', 'I want to pivot to investment banking.'],
+        ['Half marathon', 'Train for my first half marathon, starting from comfortable 5K runs\nMake friends in Seattle through a regular group activity'],
+        ['Learn an instrument', 'Learn guitar as a complete beginner. Play my first simple song. I can practise for ten minutes at a time.'],
+      ].map(([label, text]) => <Chip key={label} label={label} onPress={() => setInput(text)} />)}</View>
       <T size={12} tone="textSecondary">Your whole list stays. Only a little gets your attention at once. Single-user demo with shared state and no sign-in; avoid sensitive information.</T>
     </> : step === 1 ? <>
       <T size={12} tone="textSecondary" weight="600">ROOM IN YOUR REAL LIFE</T><T size={36} weight="600">What pace feels right?</T><T tone="textSecondary">Commitment and available time are different things.</T>
